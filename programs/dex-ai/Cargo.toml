@@ -1,0 +1,14 @@
+[package]
+name = "dex-ai"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "dex_ai"
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+anchor-lang = "0.30.1"
+anchor-spl = "0.30.1"
+solana-program = "1.18.25"
+bytemuck = { version = "1.16", features = ["derive"] }

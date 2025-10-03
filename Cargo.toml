@@ -1,0 +1,5 @@
+[workspace]
+members = [
+	"programs/dex-ai"
+]
+resolver = "2"
