@@ -8,7 +8,6 @@ export default function Home() {
   const [quote, setQuote] = useState<string | null>(null);
   const [swapParams, setSwapParams] = useState<any>({});
   const [instruction, setInstruction] = useState<any>(null);
-  const MCP_SERVER = process.env.NEXT_PUBLIC_MCP_SERVER_URL ?? "http://localhost:8080";
 
   // クォート取得
   const getQuote = async (e: any) => {
@@ -16,7 +15,7 @@ export default function Home() {
     setQuote(null);
     setInstruction(null);
     try {
-      const res = await fetch(`${MCP_SERVER}/get_dex_quote`, {
+      const res = await fetch(`/api/get_dex_quote`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ amountIn, reserveIn, reserveOut, feeBps }),
@@ -29,11 +28,10 @@ export default function Home() {
     }
   };
 
-  // Swap命令構築例 （パラメータは利用者責任でセット）
+  // Swap命令構築例
   const buildIx = async (e: any) => {
     e.preventDefault();
     setInstruction(null);
-    // UI上にstring変数で必要Inputを追加してください。
     const params: any = {
       programId: swapParams.programId || "", // 例: "..."
       pool: swapParams.pool || "",           // 例: "..."
@@ -47,7 +45,7 @@ export default function Home() {
       minAmountOut: swapParams.amountOut,
     };
     try {
-      const res = await fetch(`${MCP_SERVER}/build_solana_swap_instruction`, {
+      const res = await fetch(`/api/build_solana_swap_instruction`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(params),
@@ -74,7 +72,6 @@ export default function Home() {
       <hr />
       <form onSubmit={buildIx} style={{ margin: "2rem 0", padding: 12, border: "1px solid #ccc", borderRadius: 8 }}>
         <h2>Build Solana Swap Instruction</h2>
-        {/* 必要に応じてswapParams（publicKey等）をsetしてください。*/}
         <div style={{color:'gray',fontSize:'0.95em',marginBottom:6}}>
           PublicKey, Pool, Vault などは直接state書き換え or 入力欄追加で指定ください
         </div>
