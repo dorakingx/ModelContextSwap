@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "dex-ai-sdk": "file:../sdk",
+    "fastify": "^5.6.1"
+  }
+}
