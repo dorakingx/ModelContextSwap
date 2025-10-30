@@ -2,9 +2,9 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   experimental: {
-    serverComponentsExternalPackages: ["@coral-xyz/anchor", "@solana/web3.js"],
     externalDir: true
   },
+  serverExternalPackages: ["@coral-xyz/anchor", "@solana/web3.js"],
   transpilePackages: ["dex-ai-sdk"]
 };
 

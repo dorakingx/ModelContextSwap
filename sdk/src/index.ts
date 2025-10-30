@@ -1,5 +1,5 @@
 import { PublicKey, Connection, TransactionInstruction, SystemProgram } from "@solana/web3.js";
-import { BN, Program, AnchorProvider, Idl, utils, web3 } from "@coral-xyz/anchor";
+import type { Idl } from "@coral-xyz/anchor";
 import idl from "./dex_ai.json";
 
 export type QuoteParams = {
@@ -38,6 +38,7 @@ export type SwapBuildParams = {
 };
 
 export async function buildSwapIx(params: SwapBuildParams): Promise<TransactionInstruction> {
+  const { BN, Program, AnchorProvider } = await import("@coral-xyz/anchor");
   const provider = AnchorProvider.local();
   const program = new Program(idl as Idl, params.programId, provider);
   
