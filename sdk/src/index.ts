@@ -1,5 +1,6 @@
 import { PublicKey, Connection, TransactionInstruction, SystemProgram } from "@solana/web3.js";
-import { BN, Program, AnchorProvider, Idl } from "@coral-xyz/anchor";
+import { BN, Program, AnchorProvider, Idl, utils, web3 } from "@coral-xyz/anchor";
+import idl from "../../programs/dex-ai/target/idl/dex_ai.json";
 
 export type QuoteParams = {
   amountIn: bigint;
@@ -37,22 +38,21 @@ export type SwapBuildParams = {
 };
 
 export async function buildSwapIx(params: SwapBuildParams): Promise<TransactionInstruction> {
-  // Minimal placeholder instruction, to be replaced with Anchor IDL-aware builder later.
-  const data = Buffer.alloc(16);
-  data.writeBigUInt64LE(BigInt(params.amountIn), 0);
-  data.writeBigUInt64LE(BigInt(params.minAmountOut), 8);
-  return new TransactionInstruction({
-    programId: params.programId,
-    keys: [
-      { pubkey: params.user, isSigner: true, isWritable: true },
-      { pubkey: params.userSource, isSigner: false, isWritable: true },
-      { pubkey: params.userDestination, isSigner: false, isWritable: true },
-      { pubkey: params.pool, isSigner: false, isWritable: true },
-      { pubkey: params.vaultA, isSigner: false, isWritable: true },
-      { pubkey: params.vaultB, isSigner: false, isWritable: true },
-      { pubkey: params.tokenProgram, isSigner: false, isWritable: false },
-      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-    ],
-    data,
-  });
+  const provider = AnchorProvider.local();
+  const program = new Program(idl as Idl, params.programId, provider);
+  
+  // The account metas must match the Rust order
+  return await program.methods
+    .swap(new BN(params.amountIn.toString()), new BN(params.minAmountOut.toString()))
+    .accounts({
+      user: params.user,
+      userSource: params.userSource,
+      userDestination: params.userDestination,
+      pool: params.pool,
+      vaultA: params.vaultA,
+      vaultB: params.vaultB,
+      tokenProgram: params.tokenProgram,
+      // systemProgram is not needed for swap
+    })
+    .instruction();
 }

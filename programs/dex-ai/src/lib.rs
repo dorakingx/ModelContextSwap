@@ -22,12 +22,18 @@ pub mod dex_ai {
 		let pool = &ctx.accounts.pool;
 		require!(amount_in > 0, DexError::InvalidAmount);
 
+		// Ensure user source/destination are valid mints and vaults belong to the pool
 		let is_a_to_b = ctx.accounts.user_source.mint == pool.mint_a;
+		require!(ctx.accounts.vault_a.mint == pool.mint_a, DexError::InvalidAccount);
+		require!(ctx.accounts.vault_b.mint == pool.mint_b, DexError::InvalidAccount);
+		require!(ctx.accounts.user_destination.mint == (if is_a_to_b { pool.mint_b } else { pool.mint_a }), DexError::InvalidAccount);
+
 		let (src_vault, dst_vault) = if is_a_to_b { (&ctx.accounts.vault_a, &ctx.accounts.vault_b) } else { (&ctx.accounts.vault_b, &ctx.accounts.vault_a) };
 
 		let quote_out = compute_constant_product_quote(amount_in, src_vault.amount, dst_vault.amount, pool.fee_bps)?;
 		require!(quote_out >= min_amount_out, DexError::SlippageExceeded);
 
+		// extra: check for overflows
 		let user_to_vault = Transfer {
 			authority: ctx.accounts.user.to_account_info(),
 			from: ctx.accounts.user_source.to_account_info(),
@@ -104,6 +110,7 @@ impl<'info> Swap<'info> {
 pub enum DexError {
 	#[msg("Invalid amount")] InvalidAmount,
 	#[msg("Slippage exceeded")] SlippageExceeded,
+	#[msg("Invalid or mismatched account")] InvalidAccount,
 }
 
 fn compute_constant_product_quote(amount_in: u64, reserve_in: u64, reserve_out: u64, fee_bps: u16) -> Result<u64> {
