@@ -1,5 +1,12 @@
 import { PublicKey, Connection, TransactionInstruction, SystemProgram } from "@solana/web3.js";
-import type { Idl } from "@coral-xyz/anchor";
+// Anchor is intentionally not imported at build time for Vercel/Turbopack compatibility
+// The caller should provide the Anchor exports when invoking functions that need it
+type AnchorExports = {
+  BN: any;
+  Program: new (idl: any, programId: PublicKey, provider: any) => any;
+  AnchorProvider: { local: () => any };
+  Idl?: any;
+};
 import idl from "./dex_ai.json";
 
 export type QuoteParams = {
@@ -37,10 +44,10 @@ export type SwapBuildParams = {
   minAmountOut: bigint;
 };
 
-export async function buildSwapIx(params: SwapBuildParams): Promise<TransactionInstruction> {
-  const { BN, Program, AnchorProvider } = await import("@coral-xyz/anchor");
+export async function buildSwapIxWithAnchor(anchor: AnchorExports, params: SwapBuildParams): Promise<TransactionInstruction> {
+  const { BN, Program, AnchorProvider } = anchor;
   const provider = AnchorProvider.local();
-  const program = new Program(idl as Idl, params.programId, provider);
+  const program = new Program(idl as any, params.programId, provider);
   
   // The account metas must match the Rust order
   return await program.methods
@@ -56,4 +63,10 @@ export async function buildSwapIx(params: SwapBuildParams): Promise<TransactionI
       // systemProgram is not needed for swap
     })
     .instruction();
+}
+
+// Backwards-compatible wrapper that throws a helpful error if used in environments
+// where dynamic import of Anchor is not possible during build
+export async function buildSwapIx(_: SwapBuildParams): Promise<TransactionInstruction> {
+  throw new Error("buildSwapIx requires Anchor. Use buildSwapIxWithAnchor(await import('@coral-xyz/anchor'), params) in a server-only context.");
 }

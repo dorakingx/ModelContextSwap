@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { buildSwapIx } from "../../../../../sdk/src/index";
+import { buildSwapIxWithAnchor } from "dex-ai-sdk";
 import { PublicKey } from "@solana/web3.js";
 
 export async function POST(req: NextRequest) {
@@ -20,7 +20,8 @@ export async function POST(req: NextRequest) {
       amountIn: BigInt(amountIn),
       minAmountOut: BigInt(minAmountOut),
     };
-    const ix = await buildSwapIx(params);
+    const anchor = await import("@coral-xyz/anchor");
+    const ix = await buildSwapIxWithAnchor(anchor as any, params);
     return Response.json({
       programId: ix.programId.toString(),
       keys: ix.keys.map(k => ({
