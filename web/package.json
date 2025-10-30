@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "postinstall": "cd ../sdk && npm install --legacy-peer-deps && npm run build",
+    "postinstall": "cd ../sdk && npm install --legacy-peer-deps --prefer-offline --no-audit && npm run build",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

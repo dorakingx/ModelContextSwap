@@ -16,7 +16,7 @@
     "src/dex_ai.json"
   ],
   "scripts": {
-    "build": "npm exec -- tsup src/index.ts --dts && cp src/dex_ai.json dist/",
+    "build": "node_modules/.bin/tsup src/index.ts --dts && cp src/dex_ai.json dist/ || npm exec -- tsup src/index.ts --dts && cp src/dex_ai.json dist/",
     "prepare": "npm run build",
     "test": "node --test"
   },
