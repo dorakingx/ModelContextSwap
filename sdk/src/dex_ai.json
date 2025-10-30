@@ -1,0 +1,43 @@
+{
+  "version": "0.1.0",
+  "name": "dex_ai",
+  "instructions": [
+    {
+      "name": "swap",
+      "accounts": [
+        { "name": "user", "isMut": true, "isSigner": true },
+        { "name": "userSource", "isMut": true, "isSigner": false },
+        { "name": "userDestination", "isMut": true, "isSigner": false },
+        { "name": "pool", "isMut": true, "isSigner": false },
+        { "name": "vaultA", "isMut": true, "isSigner": false },
+        { "name": "vaultB", "isMut": true, "isSigner": false },
+        { "name": "tokenProgram", "isMut": false, "isSigner": false }
+      ],
+      "args": [
+        { "name": "amountIn", "type": "u64" },
+        { "name": "minAmountOut", "type": "u64" }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Pool",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "authority", "type": "publicKey" },
+          { "name": "mintA", "type": "publicKey" },
+          { "name": "mintB", "type": "publicKey" },
+          { "name": "vaultA", "type": "publicKey" },
+          { "name": "vaultB", "type": "publicKey" },
+          { "name": "feeBps", "type": "u16" }
+        ]
+      }
+    }
+  ],
+  "metadata": {
+    "address": "Dex111111111111111111111111111111111111111"
+  }
+}
+
+
