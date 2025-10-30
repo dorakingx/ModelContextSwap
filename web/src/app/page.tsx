@@ -1,3 +1,5 @@
+"use client";
+ 
 import { useState, useCallback } from "react";
 // import { useWallet } from '@solana/wallet-adapter-react'; (Uncomment when wallet adapter is installed)
 

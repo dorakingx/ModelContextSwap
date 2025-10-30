@@ -1,6 +1,6 @@
 import { PublicKey, Connection, TransactionInstruction, SystemProgram } from "@solana/web3.js";
 import { BN, Program, AnchorProvider, Idl, utils, web3 } from "@coral-xyz/anchor";
-import idl from "../../programs/dex-ai/target/idl/dex_ai.json";
+import idl from "./dex_ai.json";
 
 export type QuoteParams = {
   amountIn: bigint;
