@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { PublicKey } from "@solana/web3.js";
-import { buildSwapIx } from "../../../../../sdk/dist/index.js";
+import { buildSwapIx } from "dex-ai-sdk";
 
 export async function POST(req: NextRequest) {
   try {
