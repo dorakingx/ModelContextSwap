@@ -923,6 +923,89 @@ export default function Home() {
                       </a>
                     </div>
                   )}
+                  {swapError && (
+                    <div className="error-card" style={{ marginTop: "1rem" }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                          <div className="icon-dot" style={{ background: "var(--error)" }}></div>
+                          <div style={{ fontWeight: 600 }}>
+                            Swap Error
+                          </div>
+                        </div>
+                        <div style={{ 
+                          fontSize: "0.9rem", 
+                          color: "var(--text-secondary)",
+                          fontFamily: "monospace",
+                          whiteSpace: "pre-wrap",
+                          wordBreak: "break-word",
+                          backgroundColor: "rgba(0, 0, 0, 0.1)",
+                          padding: "1rem",
+                          borderRadius: "8px",
+                          border: "1px solid var(--card-border)",
+                          userSelect: "text",
+                          cursor: "text"
+                        }}>
+                          {swapError}
+                        </div>
+                        <div style={{ display: "flex", gap: "0.5rem" }}>
+                          <button
+                            onClick={async () => {
+                              try {
+                                await navigator.clipboard.writeText(swapError);
+                                // Show temporary success message
+                                const originalText = swapError;
+                                setSwapError(originalText + "\n\n[✓ Copied to clipboard!]");
+                                setTimeout(() => setSwapError(originalText), 2000);
+                              } catch (err) {
+                                console.error("Failed to copy:", err);
+                              }
+                            }}
+                            style={{
+                              padding: "0.5rem 1rem",
+                              backgroundColor: "var(--primary-red)",
+                              color: "white",
+                              border: "none",
+                              borderRadius: "8px",
+                              cursor: "pointer",
+                              fontSize: "0.875rem",
+                              fontWeight: 500,
+                              transition: "opacity 0.2s"
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.opacity = "0.9";
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.opacity = "1";
+                            }}
+                          >
+                            📋 Copy Error Message
+                          </button>
+                          <button
+                            onClick={() => setSwapError(null)}
+                            style={{
+                              padding: "0.5rem 1rem",
+                              backgroundColor: "transparent",
+                              color: "var(--text-secondary)",
+                              border: "1px solid var(--card-border)",
+                              borderRadius: "8px",
+                              cursor: "pointer",
+                              fontSize: "0.875rem",
+                              fontWeight: 500,
+                              transition: "all 0.2s"
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.backgroundColor = "var(--bg-secondary)";
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor = "transparent";
+                            }}
+                          >
+                            ✕ Close
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
