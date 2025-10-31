@@ -4,7 +4,9 @@ import { getAccount } from "@solana/spl-token";
 // The caller should provide the Anchor exports when invoking functions that need it
 type AnchorExports = {
   BN: any;
-  Program: new (idl: any, programId: PublicKey, provider: any) => any;
+  // NOTE: Anchor 0.30.1+ Program constructor signature is: (idl, provider, coder?, getCustomResolver?)
+  // The programId is NOT a parameter - it's read from idl.address instead!
+  Program: new (idl: any, provider: any, coder?: any, getCustomResolver?: any) => any;
   AnchorProvider: { local: () => any };
   Idl?: any;
   translateAddress?: (address: any) => PublicKey;
@@ -906,10 +908,46 @@ export async function buildSwapIxWithAnchor(
         throw new Error(`IDL metadata.address validation failed immediately before Program constructor call: ${err.message}`);
       }
       
-      // Use ultra-fresh programId to ensure no serialization issues
-      // Note: We're passing both programId and idlWithMetadata.metadata.address
-      // Anchor should use programId, but metadata.address serves as a fallback
-      program = new Program(idlWithMetadata, ultraFreshProgramId, provider);
+      // CRITICAL FIX: Anchor 0.30.1+ Program constructor signature is:
+      // constructor(idl, provider, coder?, getCustomResolver?)
+      // The programId is NOT a parameter - it's read from idl.address instead!
+      // So we must ensure idlWithMetadata.address (or idlWithMetadata.metadata.address) is set correctly
+      // and pass only (idl, provider) to the constructor
+      
+      // Ensure idlWithMetadata has address property at the root level (not just in metadata)
+      // Anchor's Program constructor reads from idl.address, not idl.metadata.address
+      if (!idlWithMetadata.address) {
+        idlWithMetadata.address = idlWithMetadata.metadata?.address || ultraFreshProgramId.toString();
+      }
+      
+      // Validate idlWithMetadata.address can be converted to PublicKey
+      try {
+        const testIdlAddress = new PublicKey(idlWithMetadata.address);
+        const testIdlAddressWithBn = testIdlAddress as any;
+        if (!("_bn" in testIdlAddressWithBn) || testIdlAddressWithBn._bn === undefined) {
+          throw new Error("idlWithMetadata.address PublicKey is missing _bn property");
+        }
+      } catch (err: any) {
+        throw new Error(`IDL address validation failed: ${err.message}`);
+      }
+      
+      // Log the corrected call
+      if (typeof console !== 'undefined' && console.log) {
+        try {
+          console.log('[SDK] Calling Program constructor with correct signature:', {
+            idlAddress: idlWithMetadata.address,
+            idlAddressType: typeof idlWithMetadata.address,
+            providerExists: !!provider,
+            providerType: typeof provider,
+          });
+        } catch {
+          // Ignore logging errors
+        }
+      }
+      
+      // Call Program constructor with correct signature: (idl, provider)
+      // Anchor will read programId from idl.address internally
+      program = new Program(idlWithMetadata, provider);
     } catch (programErr: any) {
       // If error occurs, log detailed information about what was passed
       // Note: idlWithMetadata may not be defined if error occurred before its creation

@@ -645,7 +645,30 @@ async function buildSwapIxWithAnchor(anchor, params, options) {
       } catch (err) {
         throw new Error(`IDL metadata.address validation failed immediately before Program constructor call: ${err.message}`);
       }
-      program = new Program(idlWithMetadata, ultraFreshProgramId, provider);
+      if (!idlWithMetadata.address) {
+        idlWithMetadata.address = idlWithMetadata.metadata?.address || ultraFreshProgramId.toString();
+      }
+      try {
+        const testIdlAddress = new import_web3.PublicKey(idlWithMetadata.address);
+        const testIdlAddressWithBn = testIdlAddress;
+        if (!("_bn" in testIdlAddressWithBn) || testIdlAddressWithBn._bn === void 0) {
+          throw new Error("idlWithMetadata.address PublicKey is missing _bn property");
+        }
+      } catch (err) {
+        throw new Error(`IDL address validation failed: ${err.message}`);
+      }
+      if (typeof console !== "undefined" && console.log) {
+        try {
+          console.log("[SDK] Calling Program constructor with correct signature:", {
+            idlAddress: idlWithMetadata.address,
+            idlAddressType: typeof idlWithMetadata.address,
+            providerExists: !!provider,
+            providerType: typeof provider
+          });
+        } catch {
+        }
+      }
+      program = new Program(idlWithMetadata, provider);
     } catch (programErr) {
       let idlWithMetadata;
       try {

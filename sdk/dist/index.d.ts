@@ -2,7 +2,7 @@ import { PublicKey, Connection, TransactionInstruction } from '@solana/web3.js';
 
 type AnchorExports = {
     BN: any;
-    Program: new (idl: any, programId: PublicKey, provider: any) => any;
+    Program: new (idl: any, provider: any, coder?: any, getCustomResolver?: any) => any;
     AnchorProvider: {
         local: () => any;
     };
