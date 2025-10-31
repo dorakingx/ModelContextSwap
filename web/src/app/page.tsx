@@ -40,6 +40,7 @@ export default function Home() {
   const { connection } = useConnection();
   const [swapLoading, setSwapLoading] = useState(false);
   const [swapTxSignature, setSwapTxSignature] = useState<string | null>(null);
+  const [swapError, setSwapError] = useState<string | null>(null);
 
   // Format token amount from raw units (with decimals) to display units
   const formatTokenAmount = useCallback((rawAmount: string, decimals: number): string => {
@@ -524,7 +525,8 @@ export default function Home() {
         errorMessage += "Unknown error occurred. Please check the console for details.";
       }
       
-      alert(errorMessage);
+      // Set error message to display in UI (copyable)
+      setSwapError(errorMessage);
     } finally {
       setSwapLoading(false);
     }
