@@ -518,6 +518,40 @@ async function buildSwapIxWithAnchor(anchor, params, options) {
     if (!("_bn" in immediateProgramIdWithBn) || immediateProgramIdWithBn._bn === void 0) {
       throw new Error("freshProgramId lost _bn property immediately before Program constructor call");
     }
+    if (!provider.publicKey || provider.publicKey === void 0 || provider.publicKey === null) {
+      provider.publicKey = provider.wallet.publicKey;
+      if (typeof console !== "undefined" && console.warn) {
+        console.warn("[SDK] provider.publicKey became undefined/null immediately before Program constructor call, resetting to provider.wallet.publicKey");
+      }
+    }
+    if (!(provider.publicKey instanceof import_web3.PublicKey)) {
+      try {
+        provider.publicKey = new import_web3.PublicKey(provider.publicKey.toString());
+      } catch (err) {
+        provider.publicKey = provider.wallet.publicKey;
+        if (typeof console !== "undefined" && console.warn) {
+          console.warn("[SDK] Failed to convert provider.publicKey, using provider.wallet.publicKey");
+        }
+      }
+    }
+    const immediateProviderPubkeyWithBn = provider.publicKey;
+    if (!("_bn" in immediateProviderPubkeyWithBn) || immediateProviderPubkeyWithBn._bn === void 0) {
+      try {
+        provider.publicKey = new import_web3.PublicKey(provider.publicKey.toString());
+        const recreatedImmediateProviderPubkeyWithBn = provider.publicKey;
+        if (!("_bn" in recreatedImmediateProviderPubkeyWithBn) || recreatedImmediateProviderPubkeyWithBn._bn === void 0) {
+          throw new Error("Failed to recreate provider.publicKey with _bn property");
+        }
+        if (typeof console !== "undefined" && console.warn) {
+          console.warn("[SDK] provider.publicKey lost _bn property immediately before Program constructor call, recreated it");
+        }
+      } catch (err) {
+        provider.publicKey = provider.wallet.publicKey;
+        if (typeof console !== "undefined" && console.warn) {
+          console.warn("[SDK] Failed to recreate provider.publicKey, using provider.wallet.publicKey");
+        }
+      }
+    }
     try {
       program = new Program(finalIdl, freshProgramId, provider);
     } catch (programErr) {
@@ -534,7 +568,12 @@ async function buildSwapIxWithAnchor(anchor, params, options) {
         providerKeys: provider ? Object.keys(provider).slice(0, 10) : [],
         providerHasConnection: !!provider?.connection,
         providerHasWallet: !!provider?.wallet,
-        providerWalletHasPubkey: !!provider?.wallet?.publicKey
+        providerWalletHasPubkey: !!provider?.wallet?.publicKey,
+        providerHasPubkey: !!provider?.publicKey,
+        providerPubkeyType: typeof provider?.publicKey,
+        providerPubkeyValue: provider?.publicKey?.toString() || "undefined/null",
+        providerPubkeyInstanceof: provider?.publicKey instanceof import_web3.PublicKey,
+        providerPubkeyHasBn: provider?.publicKey ? "_bn" in provider.publicKey : false
       };
       if (typeof console !== "undefined" && console.error) {
         try {
