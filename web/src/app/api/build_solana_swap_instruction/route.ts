@@ -229,8 +229,21 @@ export async function POST(req: NextRequest) {
     }
     
     // Validate provider wallet publicKey has _bn property
-    if (!("_bn" in provider.wallet.publicKey)) {
-      throw new Error("Provider wallet publicKey is missing _bn property");
+    const providerWalletPubkeyWithBn = provider.wallet.publicKey as any;
+    if (!("_bn" in providerWalletPubkeyWithBn) || providerWalletPubkeyWithBn._bn === undefined) {
+      // Try to recreate the publicKey if _bn is missing
+      try {
+        const recreatedPubkey = new PublicKey(provider.wallet.publicKey.toString());
+        const recreatedPubkeyWithBn = recreatedPubkey as any;
+        if (!("_bn" in recreatedPubkeyWithBn) || recreatedPubkeyWithBn._bn === undefined) {
+          throw new Error("Provider wallet publicKey _bn property is missing and cannot be recreated");
+        }
+        // Replace the wallet's publicKey with the recreated one
+        provider.wallet.publicKey = recreatedPubkey;
+        console.warn('[API] Recreated provider wallet publicKey to fix missing _bn property');
+      } catch (err: any) {
+        throw new Error(`Provider wallet publicKey is invalid: ${err.message}`);
+      }
     }
 
     const anchorExports = {

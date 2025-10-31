@@ -241,6 +241,34 @@ export async function buildSwapIxWithAnchor(
     throw new Error("Provider is missing connection property");
   }
   
+  // Validate provider wallet and publicKey to prevent _bn errors
+  // Anchor's Program constructor accesses provider.wallet.publicKey internally
+  if (!provider.wallet) {
+    throw new Error("Provider is missing wallet property");
+  }
+  
+  if (!provider.wallet.publicKey) {
+    throw new Error("Provider wallet is missing publicKey property");
+  }
+  
+  // Ensure provider wallet publicKey has _bn property
+  const providerWalletPubkeyWithBn = provider.wallet.publicKey as any;
+  if (!("_bn" in providerWalletPubkeyWithBn) || providerWalletPubkeyWithBn._bn === undefined) {
+    // Try to recreate the publicKey if _bn is missing
+    try {
+      const recreatedPubkey = new PublicKey(provider.wallet.publicKey.toString());
+      const recreatedPubkeyWithBn = recreatedPubkey as any;
+      if (!("_bn" in recreatedPubkeyWithBn) || recreatedPubkeyWithBn._bn === undefined) {
+        throw new Error("Provider wallet publicKey _bn property is missing and cannot be recreated");
+      }
+      // Replace the wallet's publicKey with the recreated one
+      provider.wallet.publicKey = recreatedPubkey;
+      console.warn('[SDK] Recreated provider wallet publicKey to fix missing _bn property');
+    } catch (err: any) {
+      throw new Error(`Provider wallet publicKey is invalid: ${err.message}`);
+    }
+  }
+  
   // Validate programId has _bn property before passing to Anchor
   const programIdWithBn = programId as any;
   if (!("_bn" in programIdWithBn) || programIdWithBn._bn === undefined) {
@@ -254,61 +282,75 @@ export async function buildSwapIxWithAnchor(
     throw new Error("IDL is invalid or undefined");
   }
   
-  // Validate and fix IDL metadata.address if needed
-  // Anchor's Program constructor uses metadata.address internally, which can cause _bn errors
-  // if the address is undefined or invalid
-  if (idl.metadata && typeof idl.metadata === 'object') {
-    const idlMetadata = idl.metadata as any;
+  // Deep validation and sanitization of IDL to prevent _bn errors
+  // Anchor's Program constructor processes the entire IDL and may encounter undefined addresses
+  const sanitizedIdl = JSON.parse(JSON.stringify(idl)) as any; // Deep clone to avoid mutating original
+  
+  // Validate and fix IDL metadata.address
+  if (!sanitizedIdl.metadata) {
+    sanitizedIdl.metadata = {};
+  }
+  
+  // Always set metadata.address to the provided programId to ensure consistency
+  sanitizedIdl.metadata.address = programId.toString();
+  
+  // Recursively scan IDL for any address fields that might cause issues
+  // Anchor may process these addresses internally, causing _bn errors if they're undefined
+  function sanitizeIdlAddresses(obj: any, path: string = ''): void {
+    if (obj === null || obj === undefined) {
+      return;
+    }
     
-    // If metadata.address exists, validate it's a valid PublicKey string
-    if (idlMetadata.address !== undefined) {
-      try {
-        // Validate the address is a valid PublicKey string
-        const metadataAddress = idlMetadata.address;
-        if (typeof metadataAddress === 'string') {
-          // Try to create a PublicKey to validate the address format
-          const testPubkey = new PublicKey(metadataAddress);
-          // Ensure the PublicKey has _bn property
+    if (typeof obj === 'string') {
+      // Check if this string looks like a PublicKey address
+      // Solana addresses are base58 encoded and typically 32-44 characters
+      if (obj.length >= 32 && obj.length <= 44 && /^[1-9A-HJ-NP-Za-km-z]+$/.test(obj)) {
+        try {
+          // Validate it's a valid PublicKey
+          const testPubkey = new PublicKey(obj);
           const testPubkeyWithBn = testPubkey as any;
           if (!("_bn" in testPubkeyWithBn) || testPubkeyWithBn._bn === undefined) {
-            // If metadata address is invalid, replace it with the provided programId
-            console.warn(`[SDK] IDL metadata.address is invalid, replacing with provided programId`);
-            idlMetadata.address = programId.toString();
-          } else {
-            // Ensure metadata.address matches the provided programId
-            if (testPubkey.toString() !== programId.toString()) {
-              console.warn(`[SDK] IDL metadata.address (${metadataAddress}) doesn't match programId (${programId.toString()}), updating metadata`);
-              idlMetadata.address = programId.toString();
-            }
+            console.warn(`[SDK] Invalid address found at ${path}: ${obj}, skipping`);
           }
-        } else {
-          // If metadata.address is not a string, set it to programId
-          console.warn(`[SDK] IDL metadata.address is not a string, setting to programId`);
-          idlMetadata.address = programId.toString();
+        } catch {
+          // Not a valid PublicKey, ignore
         }
-      } catch (err: any) {
-        // If metadata.address is invalid, replace it with the provided programId
-        console.warn(`[SDK] IDL metadata.address validation failed: ${err.message}, replacing with programId`);
-        idlMetadata.address = programId.toString();
       }
-    } else {
-      // If metadata.address doesn't exist, add it
-      idlMetadata.address = programId.toString();
+      return;
     }
     
-    // Log IDL metadata for debugging
-    if (typeof console !== 'undefined' && console.log) {
-      try {
-        console.log('[SDK] IDL metadata (after validation):', JSON.stringify(idlMetadata, null, 2));
-      } catch {
-        // Ignore logging errors
-      }
+    if (Array.isArray(obj)) {
+      obj.forEach((item, index) => {
+        sanitizeIdlAddresses(item, `${path}[${index}]`);
+      });
+      return;
     }
-  } else {
-    // If metadata doesn't exist, create it with the programId
-    (idl as any).metadata = {
-      address: programId.toString(),
-    };
+    
+    if (typeof obj === 'object') {
+      Object.keys(obj).forEach((key) => {
+        const newPath = path ? `${path}.${key}` : key;
+        
+        // Skip certain fields that shouldn't be modified
+        if (key === 'address' && path.includes('metadata')) {
+          // Already handled above
+          return;
+        }
+        
+        sanitizeIdlAddresses(obj[key], newPath);
+      });
+    }
+  }
+  
+  // Sanitize the entire IDL structure
+  sanitizeIdlAddresses(sanitizedIdl);
+  
+  // Log IDL metadata for debugging
+  if (typeof console !== 'undefined' && console.log) {
+    try {
+      console.log('[SDK] IDL metadata (after sanitization):', JSON.stringify(sanitizedIdl.metadata, null, 2));
+    } catch {
+      // Ignore logging errors
+    }
   }
   
   // Create Program instance with enhanced error handling
@@ -323,10 +365,11 @@ export async function buildSwapIxWithAnchor(
       );
     }
     
-    program = new Program(idl as any, programId, provider);
+    // Use sanitized IDL instead of original to prevent _bn errors
+    program = new Program(sanitizedIdl, programId, provider);
   } catch (err: any) {
     // Enhanced error message for Program creation failures
-    const idlMetadata = (idl as any).metadata;
+    const idlMetadata = sanitizedIdl?.metadata || (idl as any).metadata;
     const errorMsg = [
       `Failed to create Anchor Program instance: ${err.message || 'Unknown error'}`,
       ``,
@@ -335,6 +378,11 @@ export async function buildSwapIxWithAnchor(
       `Program ID instanceof PublicKey: ${programId instanceof PublicKey}`,
       `Program ID _bn exists: ${("_bn" in programIdWithBn) ? 'yes' : 'no'}`,
       `Program ID _bn value: ${programIdWithBn._bn !== undefined ? 'defined' : 'undefined'}`,
+      ``,
+      `Provider: ${provider ? 'defined' : 'undefined'}`,
+      `Provider connection: ${provider?.connection ? 'defined' : 'undefined'}`,
+      `Provider wallet: ${provider?.wallet ? 'defined' : 'undefined'}`,
+      `Provider wallet publicKey: ${provider?.wallet?.publicKey ? provider.wallet.publicKey.toString() : 'undefined'}`,
       ``,
       `IDL metadata: ${idlMetadata ? JSON.stringify(idlMetadata, null, 2) : 'N/A'}`,
       `IDL metadata.address: ${idlMetadata?.address || 'N/A'}`,

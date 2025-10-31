@@ -176,6 +176,26 @@ async function buildSwapIxWithAnchor(anchor, params, options) {
   if (!provider.connection) {
     throw new Error("Provider is missing connection property");
   }
+  if (!provider.wallet) {
+    throw new Error("Provider is missing wallet property");
+  }
+  if (!provider.wallet.publicKey) {
+    throw new Error("Provider wallet is missing publicKey property");
+  }
+  const providerWalletPubkeyWithBn = provider.wallet.publicKey;
+  if (!("_bn" in providerWalletPubkeyWithBn) || providerWalletPubkeyWithBn._bn === void 0) {
+    try {
+      const recreatedPubkey = new PublicKey(provider.wallet.publicKey.toString());
+      const recreatedPubkeyWithBn = recreatedPubkey;
+      if (!("_bn" in recreatedPubkeyWithBn) || recreatedPubkeyWithBn._bn === void 0) {
+        throw new Error("Provider wallet publicKey _bn property is missing and cannot be recreated");
+      }
+      provider.wallet.publicKey = recreatedPubkey;
+      console.warn("[SDK] Recreated provider wallet publicKey to fix missing _bn property");
+    } catch (err) {
+      throw new Error(`Provider wallet publicKey is invalid: ${err.message}`);
+    }
+  }
   const programIdWithBn = programId;
   if (!("_bn" in programIdWithBn) || programIdWithBn._bn === void 0) {
     throw new Error(
@@ -185,44 +205,50 @@ async function buildSwapIxWithAnchor(anchor, params, options) {
   if (!dex_ai_default || typeof dex_ai_default !== "object") {
     throw new Error("IDL is invalid or undefined");
   }
-  if (dex_ai_default.metadata && typeof dex_ai_default.metadata === "object") {
-    const idlMetadata = dex_ai_default.metadata;
-    if (idlMetadata.address !== void 0) {
-      try {
-        const metadataAddress = idlMetadata.address;
-        if (typeof metadataAddress === "string") {
-          const testPubkey = new PublicKey(metadataAddress);
+  const sanitizedIdl = JSON.parse(JSON.stringify(dex_ai_default));
+  if (!sanitizedIdl.metadata) {
+    sanitizedIdl.metadata = {};
+  }
+  sanitizedIdl.metadata.address = programId.toString();
+  function sanitizeIdlAddresses(obj, path = "") {
+    if (obj === null || obj === void 0) {
+      return;
+    }
+    if (typeof obj === "string") {
+      if (obj.length >= 32 && obj.length <= 44 && /^[1-9A-HJ-NP-Za-km-z]+$/.test(obj)) {
+        try {
+          const testPubkey = new PublicKey(obj);
           const testPubkeyWithBn = testPubkey;
           if (!("_bn" in testPubkeyWithBn) || testPubkeyWithBn._bn === void 0) {
-            console.warn(`[SDK] IDL metadata.address is invalid, replacing with provided programId`);
-            idlMetadata.address = programId.toString();
-          } else {
-            if (testPubkey.toString() !== programId.toString()) {
-              console.warn(`[SDK] IDL metadata.address (${metadataAddress}) doesn't match programId (${programId.toString()}), updating metadata`);
-              idlMetadata.address = programId.toString();
-            }
+            console.warn(`[SDK] Invalid address found at ${path}: ${obj}, skipping`);
           }
-        } else {
-          console.warn(`[SDK] IDL metadata.address is not a string, setting to programId`);
-          idlMetadata.address = programId.toString();
+        } catch {
         }
-      } catch (err) {
-        console.warn(`[SDK] IDL metadata.address validation failed: ${err.message}, replacing with programId`);
-        idlMetadata.address = programId.toString();
       }
-    } else {
-      idlMetadata.address = programId.toString();
+      return;
     }
-    if (typeof console !== "undefined" && console.log) {
-      try {
-        console.log("[SDK] IDL metadata (after validation):", JSON.stringify(idlMetadata, null, 2));
-      } catch {
-      }
+    if (Array.isArray(obj)) {
+      obj.forEach((item, index) => {
+        sanitizeIdlAddresses(item, `${path}[${index}]`);
+      });
+      return;
     }
-  } else {
-    dex_ai_default.metadata = {
-      address: programId.toString()
-    };
+    if (typeof obj === "object") {
+      Object.keys(obj).forEach((key) => {
+        const newPath = path ? `${path}.${key}` : key;
+        if (key === "address" && path.includes("metadata")) {
+          return;
+        }
+        sanitizeIdlAddresses(obj[key], newPath);
+      });
+    }
+  }
+  sanitizeIdlAddresses(sanitizedIdl);
+  if (typeof console !== "undefined" && console.log) {
+    try {
+      console.log("[SDK] IDL metadata (after sanitization):", JSON.stringify(sanitizedIdl.metadata, null, 2));
+    } catch {
+    }
   }
   let program;
   try {
@@ -232,9 +258,9 @@ async function buildSwapIxWithAnchor(anchor, params, options) {
         `Program ID PublicKey is missing _bn property before Program creation. PublicKey: ${programId.toString()}`
       );
     }
-    program = new Program(dex_ai_default, programId, provider);
+    program = new Program(sanitizedIdl, programId, provider);
   } catch (err) {
-    const idlMetadata = dex_ai_default.metadata;
+    const idlMetadata = sanitizedIdl?.metadata || dex_ai_default.metadata;
     const errorMsg = [
       `Failed to create Anchor Program instance: ${err.message || "Unknown error"}`,
       ``,
@@ -243,6 +269,11 @@ async function buildSwapIxWithAnchor(anchor, params, options) {
       `Program ID instanceof PublicKey: ${programId instanceof PublicKey}`,
       `Program ID _bn exists: ${"_bn" in programIdWithBn ? "yes" : "no"}`,
       `Program ID _bn value: ${programIdWithBn._bn !== void 0 ? "defined" : "undefined"}`,
+      ``,
+      `Provider: ${provider ? "defined" : "undefined"}`,
+      `Provider connection: ${provider?.connection ? "defined" : "undefined"}`,
+      `Provider wallet: ${provider?.wallet ? "defined" : "undefined"}`,
+      `Provider wallet publicKey: ${provider?.wallet?.publicKey ? provider.wallet.publicKey.toString() : "undefined"}`,
       ``,
       `IDL metadata: ${idlMetadata ? JSON.stringify(idlMetadata, null, 2) : "N/A"}`,
       `IDL metadata.address: ${idlMetadata?.address || "N/A"}`,
