@@ -141,21 +141,49 @@ export async function POST(req: NextRequest) {
     // Create a dummy wallet for instruction building (we only need the instruction, not actual signing)
     // In serverless environments, we can't use AnchorProvider.local() which requires ANCHOR_WALLET
     const dummyWallet = Keypair.generate();
+    
+    // Ensure dummyWallet.publicKey has _bn property by recreating it if necessary
+    let walletPublicKey = dummyWallet.publicKey;
+    const walletPubkeyWithBn = walletPublicKey as any;
+    if (!("_bn" in walletPubkeyWithBn) || walletPubkeyWithBn._bn === undefined) {
+      // Recreate the PublicKey to ensure _bn property exists
+      walletPublicKey = new PublicKey(dummyWallet.publicKey.toString());
+      const recreatedPubkeyWithBn = walletPublicKey as any;
+      if (!("_bn" in recreatedPubkeyWithBn) || recreatedPubkeyWithBn._bn === undefined) {
+        throw new Error("Failed to create wallet publicKey with _bn property");
+      }
+      console.warn('[API] Recreated dummyWallet publicKey to ensure _bn property exists');
+    }
+    
     const connection = new Connection(
       process.env.NEXT_PUBLIC_SOLANA_RPC_URL || "https://api.devnet.solana.com",
       "confirmed"
     );
     
     // Create AnchorProvider with dummy wallet (instruction building doesn't require real wallet)
+    // Use the validated/recreated publicKey to ensure _bn property exists
     const provider = new anchor.AnchorProvider(
       connection,
       {
-        publicKey: dummyWallet.publicKey,
+        publicKey: walletPublicKey,
         signTransaction: async (tx) => tx,
         signAllTransactions: async (txs) => txs,
       },
       { commitment: "confirmed" }
     );
+    
+    // Immediately validate the provider's wallet publicKey after creation
+    const providerWalletPubkeyAfterCreation = provider.wallet.publicKey as any;
+    if (!("_bn" in providerWalletPubkeyAfterCreation) || providerWalletPubkeyAfterCreation._bn === undefined) {
+      // Recreate and replace if _bn is still missing after provider creation
+      const recreatedAfterCreation = new PublicKey(provider.wallet.publicKey.toString());
+      const recreatedAfterCreationWithBn = recreatedAfterCreation as any;
+      if (!("_bn" in recreatedAfterCreationWithBn) || recreatedAfterCreationWithBn._bn === undefined) {
+        throw new Error("Provider wallet publicKey _bn property is missing after provider creation and cannot be recreated");
+      }
+      provider.wallet.publicKey = recreatedAfterCreation;
+      console.warn('[API] Recreated provider wallet publicKey after provider creation to fix missing _bn property');
+    }
 
     // Use buildSwapIxWithAnchor which requires Anchor
     // IMPORTANT: Always use anchor.BN as Anchor's Program expects Anchor's BN wrapper
