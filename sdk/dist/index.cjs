@@ -394,14 +394,28 @@ async function buildSwapIxWithAnchor(anchor, params, options) {
       }
     }
     const finalIdl = JSON.parse(JSON.stringify(sanitizedIdl));
-    if (!finalIdl.metadata || !finalIdl.metadata.address) {
-      finalIdl.metadata = { address: freshProgramId.toString() };
-    } else {
-      finalIdl.metadata.address = freshProgramId.toString();
+    if (finalIdl.metadata) {
+      const { address, ...metadataWithoutAddress } = finalIdl.metadata;
+      if (Object.keys(metadataWithoutAddress).length > 0) {
+        finalIdl.metadata = metadataWithoutAddress;
+      } else {
+        delete finalIdl.metadata;
+      }
     }
     const finalIdlStringCheck = JSON.stringify(finalIdl);
     if (finalIdlStringCheck.includes("undefined") || finalIdlStringCheck.includes("null")) {
       throw new Error("Final IDL still contains undefined/null values after JSON serialization");
+    }
+    if (typeof console !== "undefined" && console.log) {
+      try {
+        console.log("[SDK] Final IDL (metadata.address removed):", JSON.stringify({
+          version: finalIdl.version,
+          name: finalIdl.name,
+          hasMetadata: !!finalIdl.metadata,
+          metadataKeys: finalIdl.metadata ? Object.keys(finalIdl.metadata) : []
+        }, null, 2));
+      } catch {
+      }
     }
     program = new Program(finalIdl, freshProgramId, provider);
   } catch (err) {
