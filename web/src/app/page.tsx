@@ -9,6 +9,8 @@ import { formatLargeNumber } from "@/utils/validation";
 import { TokenSelector } from "@/components/TokenSelector";
 import { Token, POPULAR_TOKENS } from "@/utils/tokens";
 import { getTokenIconStyle } from "@/utils/tokenIcons";
+import { WalletButton } from "@/components/WalletButton";
+import { useWallet } from "@solana/wallet-adapter-react";
 
 export default function Home() {
   const [amountIn, setAmountIn] = useState("");
@@ -33,6 +35,7 @@ export default function Home() {
   } = useDexApi();
   
   const { status: mcpStatus, error: mcpError } = useMcpServer();
+  const { publicKey, connected } = useWallet();
 
   // Format token amount from raw units (with decimals) to display units
   const formatTokenAmount = useCallback((rawAmount: string, decimals: number): string => {
@@ -181,12 +184,18 @@ export default function Home() {
       return;
     }
 
+    if (!connected || !publicKey) {
+      alert("Please connect your wallet to build a swap instruction.");
+      return;
+    }
+
     // Note: This requires additional parameters that should come from wallet context
     // For now, we'll show a message that these need to be provided
     const swapParams: SwapParams = { amountIn, reserveIn, reserveOut, feeBps };
     
     // This is a placeholder - actual implementation requires wallet integration
-    alert("Build Instruction requires wallet integration. Please provide Solana PublicKeys for all required accounts.");
+    // The instruction can be built using the connected wallet's public key
+    alert(`Build Instruction requires additional account parameters. Connected wallet: ${publicKey.toString()}`);
   };
 
   return (
@@ -199,7 +208,35 @@ export default function Home() {
       <div className="hero">
         <div className="hero-motif" />
         <div className="container hero-content">
-          <h1>Model Context Swap</h1>
+          <div style={{ 
+            display: "flex", 
+            justifyContent: "space-between", 
+            alignItems: "center",
+            width: "100%",
+            marginBottom: "2rem",
+            flexWrap: "wrap",
+            gap: "1rem"
+          }}>
+            <h1 style={{ margin: 0 }}>Model Context Swap</h1>
+            <WalletButton />
+          </div>
+          {connected && publicKey && (
+            <div style={{
+              padding: "0.75rem 1.5rem",
+              background: "rgba(16, 185, 129, 0.1)",
+              borderRadius: "12px",
+              marginBottom: "1rem",
+              display: "flex",
+              alignItems: "center",
+              gap: "0.5rem",
+              fontSize: "0.9rem",
+              color: "var(--success)",
+              fontWeight: 600
+            }}>
+              <span>✓</span>
+              <span>Wallet Connected: {publicKey.toString().slice(0, 8)}...{publicKey.toString().slice(-8)}</span>
+            </div>
+          )}
           <p>AI agent-friendly DEX on Solana with Model Context Protocol integration</p>
           <div className="cta-row">
             <button className="btn btn-primary" onClick={() => document.getElementById('swap-section')?.scrollIntoView({ behavior: 'smooth' })}>
