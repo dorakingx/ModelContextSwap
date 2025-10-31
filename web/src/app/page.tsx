@@ -10,7 +10,8 @@ import { TokenSelector } from "@/components/TokenSelector";
 import { Token, POPULAR_TOKENS } from "@/utils/tokens";
 import { getTokenIconStyle } from "@/utils/tokenIcons";
 import { WalletButton } from "@/components/WalletButton";
-import { useWallet } from "@solana/wallet-adapter-react";
+import { useWallet, useConnection } from "@solana/wallet-adapter-react";
+import { Transaction, PublicKey } from "@solana/web3.js";
 
 export default function Home() {
   const [amountIn, setAmountIn] = useState("");
@@ -35,7 +36,10 @@ export default function Home() {
   } = useDexApi();
   
   const { status: mcpStatus, error: mcpError } = useMcpServer();
-  const { publicKey, connected } = useWallet();
+  const { publicKey, connected, sendTransaction } = useWallet();
+  const { connection } = useConnection();
+  const [swapLoading, setSwapLoading] = useState(false);
+  const [swapTxSignature, setSwapTxSignature] = useState<string | null>(null);
 
   // Format token amount from raw units (with decimals) to display units
   const formatTokenAmount = useCallback((rawAmount: string, decimals: number): string => {
@@ -196,6 +200,117 @@ export default function Home() {
     // This is a placeholder - actual implementation requires wallet integration
     // The instruction can be built using the connected wallet's public key
     alert(`Build Instruction requires additional account parameters. Connected wallet: ${publicKey.toString()}`);
+  };
+
+  const handleSwap = async () => {
+    if (!quote || !connected || !publicKey || !tokenFrom || !tokenTo) {
+      alert("Please connect your wallet and ensure all fields are filled.");
+      return;
+    }
+
+    setSwapLoading(true);
+    setSwapTxSignature(null);
+
+    try {
+      // Convert amountIn to smallest unit
+      const amountInConverted = convertToSmallestUnit(amountIn, tokenFrom.decimals);
+      const minAmountOut = quote.amountOut;
+
+      // Note: These are placeholder values - in production, these should be fetched from
+      // the actual DEX protocol or pool contracts
+      const programId = new PublicKey("Dex111111111111111111111111111111111111111");
+      const pool = PublicKey.findProgramAddressSync(
+        [Buffer.from("pool"), tokenFrom.mint.slice(0, 8), tokenTo.mint.slice(0, 8)],
+        programId
+      )[0];
+      const user = publicKey;
+      
+      // Derive user token accounts (simplified - in production, these should be actual token accounts)
+      const userSource = PublicKey.findProgramAddressSync(
+        [Buffer.from("token"), user.toBuffer(), tokenFrom.mint.slice(0, 8)],
+        programId
+      )[0];
+      const userDestination = PublicKey.findProgramAddressSync(
+        [Buffer.from("token"), user.toBuffer(), tokenTo.mint.slice(0, 8)],
+        programId
+      )[0];
+      
+      const vaultA = PublicKey.findProgramAddressSync(
+        [Buffer.from("vault"), pool.toBuffer(), tokenFrom.mint.slice(0, 8)],
+        programId
+      )[0];
+      const vaultB = PublicKey.findProgramAddressSync(
+        [Buffer.from("vault"), pool.toBuffer(), tokenTo.mint.slice(0, 8)],
+        programId
+      )[0];
+      const tokenProgram = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+
+      // Build instruction
+      const instructionParams: SwapInstructionRequest = {
+        programId: programId.toString(),
+        pool: pool.toString(),
+        user: user.toString(),
+        userSource: userSource.toString(),
+        userDestination: userDestination.toString(),
+        vaultA: vaultA.toString(),
+        vaultB: vaultB.toString(),
+        tokenProgram: tokenProgram.toString(),
+        amountIn: amountInConverted,
+        minAmountOut: minAmountOut,
+      };
+
+      // Build instruction via API
+      const ixRes = await fetch(`/api/build_solana_swap_instruction`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(instructionParams),
+      });
+
+      if (!ixRes.ok) {
+        const errorData = await ixRes.json();
+        throw new Error(errorData.error || "Failed to build instruction");
+      }
+
+      const instructionData = await ixRes.json();
+
+      // Build transaction
+      const transaction = new Transaction();
+      
+      // Reconstruct instruction from API response
+      const swapIx = {
+        programId: new PublicKey(instructionData.programId),
+        keys: instructionData.keys.map((k: any) => ({
+          pubkey: new PublicKey(k.pubkey),
+          isSigner: k.isSigner,
+          isWritable: k.isWritable,
+        })),
+        data: Buffer.from(instructionData.data, "base64"),
+      };
+
+      transaction.add(swapIx);
+
+      // Get recent blockhash
+      const { blockhash } = await connection.getLatestBlockhash();
+      transaction.recentBlockhash = blockhash;
+      transaction.feePayer = publicKey;
+
+      // Send transaction
+      const signature = await sendTransaction(transaction, connection, {
+        skipPreflight: false,
+      });
+
+      setSwapTxSignature(signature);
+
+      // Wait for confirmation
+      await connection.confirmTransaction(signature, "confirmed");
+      
+      alert(`Swap successful! Transaction signature: ${signature}`);
+    } catch (err: any) {
+      console.error("Swap error:", err);
+      alert(`Swap failed: ${err.message || "Unknown error"}`);
+    } finally {
+      setSwapLoading(false);
+    }
   };
 
   return (
@@ -548,6 +663,49 @@ export default function Home() {
                   </div>
                 </div>
               </div>
+              
+              {/* Swap Button */}
+              {connected && publicKey && (
+                <div style={{ marginTop: "1.5rem" }}>
+                  <button
+                    type="button"
+                    onClick={handleSwap}
+                    disabled={swapLoading || !quote}
+                    className="btn btn-primary btn-large"
+                    style={{ width: "100%" }}
+                  >
+                    {swapLoading ? (
+                      <>
+                        <span className="loading-spinner" />
+                        <span>Swapping...</span>
+                      </>
+                    ) : (
+                      `🔄 Swap ${tokenFrom?.symbol} → ${tokenTo?.symbol}`
+                    )}
+                  </button>
+                  {swapTxSignature && (
+                    <div style={{
+                      marginTop: "1rem",
+                      padding: "1rem",
+                      background: "rgba(16, 185, 129, 0.1)",
+                      borderRadius: "12px",
+                      fontSize: "0.9rem",
+                      color: "var(--success)",
+                      textAlign: "center"
+                    }}>
+                      <div style={{ fontWeight: 600, marginBottom: "0.5rem" }}>✓ Transaction Sent</div>
+                      <a
+                        href={`https://solscan.io/tx/${swapTxSignature}?cluster=devnet`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ color: "var(--success)", textDecoration: "underline" }}
+                      >
+                        View on Solscan: {swapTxSignature.slice(0, 8)}...{swapTxSignature.slice(-8)}
+                      </a>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
