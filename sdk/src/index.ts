@@ -241,7 +241,114 @@ export async function buildSwapIxWithAnchor(
     throw new Error("Provider is missing connection property");
   }
   
-  const program = new Program(idl as any, programId, provider);
+  // Validate programId has _bn property before passing to Anchor
+  const programIdWithBn = programId as any;
+  if (!("_bn" in programIdWithBn) || programIdWithBn._bn === undefined) {
+    throw new Error(
+      `Program ID PublicKey is missing _bn property. PublicKey: ${programId.toString()}`
+    );
+  }
+  
+  // Validate IDL structure before creating Program
+  if (!idl || typeof idl !== 'object') {
+    throw new Error("IDL is invalid or undefined");
+  }
+  
+  // Validate and fix IDL metadata.address if needed
+  // Anchor's Program constructor uses metadata.address internally, which can cause _bn errors
+  // if the address is undefined or invalid
+  if (idl.metadata && typeof idl.metadata === 'object') {
+    const idlMetadata = idl.metadata as any;
+    
+    // If metadata.address exists, validate it's a valid PublicKey string
+    if (idlMetadata.address !== undefined) {
+      try {
+        // Validate the address is a valid PublicKey string
+        const metadataAddress = idlMetadata.address;
+        if (typeof metadataAddress === 'string') {
+          // Try to create a PublicKey to validate the address format
+          const testPubkey = new PublicKey(metadataAddress);
+          // Ensure the PublicKey has _bn property
+          const testPubkeyWithBn = testPubkey as any;
+          if (!("_bn" in testPubkeyWithBn) || testPubkeyWithBn._bn === undefined) {
+            // If metadata address is invalid, replace it with the provided programId
+            console.warn(`[SDK] IDL metadata.address is invalid, replacing with provided programId`);
+            idlMetadata.address = programId.toString();
+          } else {
+            // Ensure metadata.address matches the provided programId
+            if (testPubkey.toString() !== programId.toString()) {
+              console.warn(`[SDK] IDL metadata.address (${metadataAddress}) doesn't match programId (${programId.toString()}), updating metadata`);
+              idlMetadata.address = programId.toString();
+            }
+          }
+        } else {
+          // If metadata.address is not a string, set it to programId
+          console.warn(`[SDK] IDL metadata.address is not a string, setting to programId`);
+          idlMetadata.address = programId.toString();
+        }
+      } catch (err: any) {
+        // If metadata.address is invalid, replace it with the provided programId
+        console.warn(`[SDK] IDL metadata.address validation failed: ${err.message}, replacing with programId`);
+        idlMetadata.address = programId.toString();
+      }
+    } else {
+      // If metadata.address doesn't exist, add it
+      idlMetadata.address = programId.toString();
+    }
+    
+    // Log IDL metadata for debugging
+    if (typeof console !== 'undefined' && console.log) {
+      try {
+        console.log('[SDK] IDL metadata (after validation):', JSON.stringify(idlMetadata, null, 2));
+      } catch {
+        // Ignore logging errors
+      }
+    }
+  } else {
+    // If metadata doesn't exist, create it with the programId
+    (idl as any).metadata = {
+      address: programId.toString(),
+    };
+  }
+  
+  // Create Program instance with enhanced error handling
+  let program;
+  try {
+    // programId is already validated by assertPubkey above, so it's guaranteed to be a PublicKey instance
+    // However, we double-check the _bn property one more time before passing to Anchor
+    const validatedProgramIdWithBn = programId as any;
+    if (!("_bn" in validatedProgramIdWithBn) || validatedProgramIdWithBn._bn === undefined) {
+      throw new Error(
+        `Program ID PublicKey is missing _bn property before Program creation. PublicKey: ${programId.toString()}`
+      );
+    }
+    
+    program = new Program(idl as any, programId, provider);
+  } catch (err: any) {
+    // Enhanced error message for Program creation failures
+    const idlMetadata = (idl as any).metadata;
+    const errorMsg = [
+      `Failed to create Anchor Program instance: ${err.message || 'Unknown error'}`,
+      ``,
+      `Program ID: ${programId.toString()}`,
+      `Program ID type: ${typeof programId}`,
+      `Program ID instanceof PublicKey: ${programId instanceof PublicKey}`,
+      `Program ID _bn exists: ${("_bn" in programIdWithBn) ? 'yes' : 'no'}`,
+      `Program ID _bn value: ${programIdWithBn._bn !== undefined ? 'defined' : 'undefined'}`,
+      ``,
+      `IDL metadata: ${idlMetadata ? JSON.stringify(idlMetadata, null, 2) : 'N/A'}`,
+      `IDL metadata.address: ${idlMetadata?.address || 'N/A'}`,
+      `IDL metadata.address type: ${typeof idlMetadata?.address}`,
+      ``,
+      `Error Type: ${err.constructor?.name || typeof err}`,
+      `Error Name: ${err.name || 'Unknown'}`,
+      ``,
+      `Stack Trace:`,
+      err.stack || 'No stack trace available',
+    ].join('\n');
+    
+    throw new Error(errorMsg);
+  }
   
   // Validate and create BN instances using safeConvertToBN with enhanced validation
   const amountInBN = safeConvertToBN("amountIn", BN, params.amountIn, { allowZero: false });

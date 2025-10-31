@@ -204,7 +204,86 @@ async function buildSwapIxWithAnchor(anchor, params, options) {
   if (!provider.connection) {
     throw new Error("Provider is missing connection property");
   }
-  const program = new Program(dex_ai_default, programId, provider);
+  const programIdWithBn = programId;
+  if (!("_bn" in programIdWithBn) || programIdWithBn._bn === void 0) {
+    throw new Error(
+      `Program ID PublicKey is missing _bn property. PublicKey: ${programId.toString()}`
+    );
+  }
+  if (!dex_ai_default || typeof dex_ai_default !== "object") {
+    throw new Error("IDL is invalid or undefined");
+  }
+  if (dex_ai_default.metadata && typeof dex_ai_default.metadata === "object") {
+    const idlMetadata = dex_ai_default.metadata;
+    if (idlMetadata.address !== void 0) {
+      try {
+        const metadataAddress = idlMetadata.address;
+        if (typeof metadataAddress === "string") {
+          const testPubkey = new import_web3.PublicKey(metadataAddress);
+          const testPubkeyWithBn = testPubkey;
+          if (!("_bn" in testPubkeyWithBn) || testPubkeyWithBn._bn === void 0) {
+            console.warn(`[SDK] IDL metadata.address is invalid, replacing with provided programId`);
+            idlMetadata.address = programId.toString();
+          } else {
+            if (testPubkey.toString() !== programId.toString()) {
+              console.warn(`[SDK] IDL metadata.address (${metadataAddress}) doesn't match programId (${programId.toString()}), updating metadata`);
+              idlMetadata.address = programId.toString();
+            }
+          }
+        } else {
+          console.warn(`[SDK] IDL metadata.address is not a string, setting to programId`);
+          idlMetadata.address = programId.toString();
+        }
+      } catch (err) {
+        console.warn(`[SDK] IDL metadata.address validation failed: ${err.message}, replacing with programId`);
+        idlMetadata.address = programId.toString();
+      }
+    } else {
+      idlMetadata.address = programId.toString();
+    }
+    if (typeof console !== "undefined" && console.log) {
+      try {
+        console.log("[SDK] IDL metadata (after validation):", JSON.stringify(idlMetadata, null, 2));
+      } catch {
+      }
+    }
+  } else {
+    dex_ai_default.metadata = {
+      address: programId.toString()
+    };
+  }
+  let program;
+  try {
+    const validatedProgramIdWithBn = programId;
+    if (!("_bn" in validatedProgramIdWithBn) || validatedProgramIdWithBn._bn === void 0) {
+      throw new Error(
+        `Program ID PublicKey is missing _bn property before Program creation. PublicKey: ${programId.toString()}`
+      );
+    }
+    program = new Program(dex_ai_default, programId, provider);
+  } catch (err) {
+    const idlMetadata = dex_ai_default.metadata;
+    const errorMsg = [
+      `Failed to create Anchor Program instance: ${err.message || "Unknown error"}`,
+      ``,
+      `Program ID: ${programId.toString()}`,
+      `Program ID type: ${typeof programId}`,
+      `Program ID instanceof PublicKey: ${programId instanceof import_web3.PublicKey}`,
+      `Program ID _bn exists: ${"_bn" in programIdWithBn ? "yes" : "no"}`,
+      `Program ID _bn value: ${programIdWithBn._bn !== void 0 ? "defined" : "undefined"}`,
+      ``,
+      `IDL metadata: ${idlMetadata ? JSON.stringify(idlMetadata, null, 2) : "N/A"}`,
+      `IDL metadata.address: ${idlMetadata?.address || "N/A"}`,
+      `IDL metadata.address type: ${typeof idlMetadata?.address}`,
+      ``,
+      `Error Type: ${err.constructor?.name || typeof err}`,
+      `Error Name: ${err.name || "Unknown"}`,
+      ``,
+      `Stack Trace:`,
+      err.stack || "No stack trace available"
+    ].join("\n");
+    throw new Error(errorMsg);
+  }
   const amountInBN = safeConvertToBN("amountIn", BN, params.amountIn, { allowZero: false });
   const minAmountOutBN = safeConvertToBN("minAmountOut", BN, params.minAmountOut, { allowZero: false });
   if (options?.connection && options?.validateTokenAccounts) {
