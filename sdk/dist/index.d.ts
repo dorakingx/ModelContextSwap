@@ -7,6 +7,7 @@ type AnchorExports = {
         local: () => any;
     };
     Idl?: any;
+    translateAddress?: (address: any) => PublicKey;
 };
 /**
  * Safe conversion to BN with comprehensive undefined/null checks

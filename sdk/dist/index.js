@@ -598,6 +598,25 @@ async function buildSwapIxWithAnchor(anchor, params, options) {
         } catch {
         }
       }
+      if (!ultraFreshProgramId || !(ultraFreshProgramId instanceof PublicKey)) {
+        throw new Error("ultraFreshProgramId is invalid immediately before Program constructor call");
+      }
+      const finalUltraFreshProgramIdWithBn = ultraFreshProgramId;
+      if (!("_bn" in finalUltraFreshProgramIdWithBn) || finalUltraFreshProgramIdWithBn._bn === void 0) {
+        throw new Error("ultraFreshProgramId lost _bn property immediately before Program constructor call");
+      }
+      if (!idlWithMetadata.metadata || !idlWithMetadata.metadata.address) {
+        throw new Error("idlWithMetadata.metadata.address is missing immediately before Program constructor call");
+      }
+      try {
+        const finalMetaAddress = new PublicKey(idlWithMetadata.metadata.address);
+        const finalMetaAddressWithBn = finalMetaAddress;
+        if (!("_bn" in finalMetaAddressWithBn) || finalMetaAddressWithBn._bn === void 0) {
+          throw new Error("metadata.address PublicKey is missing _bn property immediately before Program constructor call");
+        }
+      } catch (err) {
+        throw new Error(`IDL metadata.address validation failed immediately before Program constructor call: ${err.message}`);
+      }
       program = new Program(idlWithMetadata, ultraFreshProgramId, provider);
     } catch (programErr) {
       let idlWithMetadata;

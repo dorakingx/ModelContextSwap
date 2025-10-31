@@ -7,6 +7,7 @@ type AnchorExports = {
   Program: new (idl: any, programId: PublicKey, provider: any) => any;
   AnchorProvider: { local: () => any };
   Idl?: any;
+  translateAddress?: (address: any) => PublicKey;
 };
 import idl from "./dex_ai.json";
 
@@ -875,7 +876,39 @@ export async function buildSwapIxWithAnchor(
         }
       }
       
+      // CRITICAL: Try to intercept Anchor's translateAddress calls if possible
+      // Some Anchor versions may call translateAddress on undefined values internally
+      // We'll wrap the Program constructor call and ensure all values are valid
+      
+      // Final sanity check: ensure all values are still valid
+      if (!ultraFreshProgramId || !(ultraFreshProgramId instanceof PublicKey)) {
+        throw new Error('ultraFreshProgramId is invalid immediately before Program constructor call');
+      }
+      
+      const finalUltraFreshProgramIdWithBn = ultraFreshProgramId as any;
+      if (!("_bn" in finalUltraFreshProgramIdWithBn) || finalUltraFreshProgramIdWithBn._bn === undefined) {
+        throw new Error('ultraFreshProgramId lost _bn property immediately before Program constructor call');
+      }
+      
+      // Ensure idlWithMetadata.metadata.address is still valid
+      if (!idlWithMetadata.metadata || !idlWithMetadata.metadata.address) {
+        throw new Error('idlWithMetadata.metadata.address is missing immediately before Program constructor call');
+      }
+      
+      // Validate metadata.address can still be converted to PublicKey
+      try {
+        const finalMetaAddress = new PublicKey(idlWithMetadata.metadata.address);
+        const finalMetaAddressWithBn = finalMetaAddress as any;
+        if (!("_bn" in finalMetaAddressWithBn) || finalMetaAddressWithBn._bn === undefined) {
+          throw new Error('metadata.address PublicKey is missing _bn property immediately before Program constructor call');
+        }
+      } catch (err: any) {
+        throw new Error(`IDL metadata.address validation failed immediately before Program constructor call: ${err.message}`);
+      }
+      
       // Use ultra-fresh programId to ensure no serialization issues
+      // Note: We're passing both programId and idlWithMetadata.metadata.address
+      // Anchor should use programId, but metadata.address serves as a fallback
       program = new Program(idlWithMetadata, ultraFreshProgramId, provider);
     } catch (programErr: any) {
       // If error occurs, log detailed information about what was passed
