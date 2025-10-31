@@ -1,104 +1,64 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState } from "react";
 import "./globals.css";
-
-function useDexApi() {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [quote, setQuote] = useState<string | null>(null);
-  const [instruction, setInstruction] = useState<any>(null);
-
-  const getQuote = useCallback(async (amountIn: string, reserveIn: string, reserveOut: string, feeBps: string) => {
-    setLoading(true);
-    setError(null);
-    setInstruction(null);
-    setQuote(null);
-    try {
-      const res = await fetch(`/api/get_dex_quote`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amountIn, reserveIn, reserveOut, feeBps }),
-      });
-      if (!res.ok) {
-        throw new Error(`HTTP error! status: ${res.status}`);
-      }
-      const json = await res.json();
-      setQuote(json.amountOut);
-    } catch (err) {
-      setError("Error fetching quote: " + String(err));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const buildIx = useCallback(async (params: any) => {
-    setLoading(true);
-    setError(null);
-    setInstruction(null);
-    try {
-      const res = await fetch(`/api/build_solana_swap_instruction`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(params),
-      });
-      if (!res.ok) {
-        throw new Error(`HTTP error! status: ${res.status}`);
-      }
-      const json = await res.json();
-      setInstruction(json);
-    } catch (err) {
-      setError("Error building instruction: " + String(err));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  return { getQuote, buildIx, loading, error, quote, instruction };
-}
-
-function useMcpServer() {
-  const [status, setStatus] = useState<"checking" | "active" | "inactive">("checking");
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const checkStatus = async () => {
-      try {
-        const res = await fetch("http://localhost:8080/get_dex_quote", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            amountIn: "1000000",
-            reserveIn: "1000000000",
-            reserveOut: "1000000000",
-            feeBps: 30,
-          }),
-        });
-        setStatus(res.ok ? "active" : "inactive");
-      } catch (err) {
-        setStatus("inactive");
-        setError("MCP Server is not running on localhost:8080");
-      }
-    };
-    
-    checkStatus();
-    const interval = setInterval(checkStatus, 30000); // Check every 30s
-    
-    return () => clearInterval(interval);
-  }, []);
-
-  return { status, error };
-}
+import { useDexApi } from "@/hooks/useDexApi";
+import { useMcpServer } from "@/hooks/useMcpServer";
+import { SwapParams, SwapInstructionRequest } from "@/types";
+import { formatLargeNumber } from "@/utils/validation";
 
 export default function Home() {
   const [amountIn, setAmountIn] = useState("");
   const [reserveIn, setReserveIn] = useState("");
   const [reserveOut, setReserveOut] = useState("");
   const [feeBps, setFeeBps] = useState("30");
-  const [swapParams, setSwapParams] = useState<any>({});
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
-  const { getQuote, buildIx, loading, error, quote, instruction } = useDexApi();
+  const { 
+    getQuote, 
+    buildIx, 
+    quoteLoading, 
+    instructionLoading, 
+    error, 
+    quote, 
+    instruction 
+  } = useDexApi();
+  
   const { status: mcpStatus, error: mcpError } = useMcpServer();
+
+  const handleGetQuote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormErrors({});
+
+    const newErrors: Record<string, string> = {};
+
+    if (!amountIn.trim()) newErrors.amountIn = "Amount In is required";
+    if (!reserveIn.trim()) newErrors.reserveIn = "Reserve In is required";
+    if (!reserveOut.trim()) newErrors.reserveOut = "Reserve Out is required";
+    if (!feeBps.trim()) newErrors.feeBps = "Fee (bps) is required";
+
+    if (Object.keys(newErrors).length > 0) {
+      setFormErrors(newErrors);
+      return;
+    }
+
+    await getQuote({ amountIn, reserveIn, reserveOut, feeBps });
+  };
+
+  const handleBuildInstruction = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!quote) {
+      return;
+    }
+
+    // Note: This requires additional parameters that should come from wallet context
+    // For now, we'll show a message that these need to be provided
+    const swapParams: SwapParams = { amountIn, reserveIn, reserveOut, feeBps };
+    
+    // This is a placeholder - actual implementation requires wallet integration
+    alert("Build Instruction requires wallet integration. Please provide Solana PublicKeys for all required accounts.");
+  };
 
   return (
     <div style={{ 
@@ -145,11 +105,7 @@ export default function Home() {
           </p>
 
           {/* Get Quote Form */}
-          <form onSubmit={e => {
-            e.preventDefault();
-            getQuote(amountIn, reserveIn, reserveOut, feeBps);
-            setSwapParams({ amountIn, reserveIn, reserveOut, feeBps });
-          }}>
+          <form onSubmit={handleGetQuote}>
             <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
               <div className="token-input-container">
                 <div style={{ 
@@ -165,17 +121,33 @@ export default function Home() {
                     className="token-input-value"
                     placeholder="0.0"
                     value={amountIn}
-                    onChange={e => setAmountIn(e.target.value)}
-                    required
+                    onChange={e => {
+                      setAmountIn(e.target.value);
+                      if (formErrors.amountIn) {
+                        setFormErrors(prev => {
+                          const newErrors = { ...prev };
+                          delete newErrors.amountIn;
+                          return newErrors;
+                        });
+                      }
+                    }}
+                    aria-label="Amount In"
+                    aria-invalid={!!formErrors.amountIn}
+                    aria-describedby={formErrors.amountIn ? "amountIn-error" : undefined}
                   />
                   <div className="token-info">
                     <span>Amount In</span>
                   </div>
                 </div>
+                {formErrors.amountIn && (
+                  <div id="amountIn-error" style={{ color: "var(--error)", fontSize: "0.85rem", marginTop: "0.5rem" }}>
+                    {formErrors.amountIn}
+                  </div>
+                )}
               </div>
 
               <div style={{ display: "flex", justifyContent: "center", margin: "0.5rem 0" }}>
-                <div className="swap-arrow" onClick={() => {}}>
+                <div className="swap-arrow" onClick={() => {}} role="button" aria-label="Swap direction" tabIndex={0}>
                   <svg viewBox="0 0 24 24" fill="none">
                     <path d="M7 10L12 15L17 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
@@ -196,13 +168,29 @@ export default function Home() {
                     className="token-input-value"
                     placeholder="0.0"
                     value={reserveOut}
-                    onChange={e => setReserveOut(e.target.value)}
-                    required
+                    onChange={e => {
+                      setReserveOut(e.target.value);
+                      if (formErrors.reserveOut) {
+                        setFormErrors(prev => {
+                          const newErrors = { ...prev };
+                          delete newErrors.reserveOut;
+                          return newErrors;
+                        });
+                      }
+                    }}
+                    aria-label="Reserve Out"
+                    aria-invalid={!!formErrors.reserveOut}
+                    aria-describedby={formErrors.reserveOut ? "reserveOut-error" : undefined}
                   />
                   <div className="token-info">
                     <span>Reserve Out</span>
                   </div>
                 </div>
+                {formErrors.reserveOut && (
+                  <div id="reserveOut-error" style={{ color: "var(--error)", fontSize: "0.85rem", marginTop: "0.5rem" }}>
+                    {formErrors.reserveOut}
+                  </div>
+                )}
               </div>
 
               <div style={{ 
@@ -218,9 +206,24 @@ export default function Home() {
                       className="input-field"
                       placeholder="1000000000"
                       value={reserveIn}
-                      onChange={e => setReserveIn(e.target.value)}
-                      required
+                      onChange={e => {
+                        setReserveIn(e.target.value);
+                        if (formErrors.reserveIn) {
+                          setFormErrors(prev => {
+                            const newErrors = { ...prev };
+                            delete newErrors.reserveIn;
+                            return newErrors;
+                          });
+                        }
+                      }}
+                      aria-invalid={!!formErrors.reserveIn}
+                      aria-describedby={formErrors.reserveIn ? "reserveIn-error" : undefined}
                     />
+                    {formErrors.reserveIn && (
+                      <div id="reserveIn-error" style={{ color: "var(--error)", fontSize: "0.75rem", marginTop: "0.25rem" }}>
+                        {formErrors.reserveIn}
+                      </div>
+                    )}
                   </div>
                   <div className="input-group" style={{ marginBottom: 0 }}>
                     <label className="input-label" style={{ fontSize: "0.85rem" }}>Fee (bps)</label>
@@ -228,15 +231,30 @@ export default function Home() {
                       className="input-field"
                       placeholder="30"
                       value={feeBps}
-                      onChange={e => setFeeBps(e.target.value)}
-                      required
+                      onChange={e => {
+                        setFeeBps(e.target.value);
+                        if (formErrors.feeBps) {
+                          setFormErrors(prev => {
+                            const newErrors = { ...prev };
+                            delete newErrors.feeBps;
+                            return newErrors;
+                          });
+                        }
+                      }}
+                      aria-invalid={!!formErrors.feeBps}
+                      aria-describedby={formErrors.feeBps ? "feeBps-error" : undefined}
                     />
+                    {formErrors.feeBps && (
+                      <div id="feeBps-error" style={{ color: "var(--error)", fontSize: "0.75rem", marginTop: "0.25rem" }}>
+                        {formErrors.feeBps}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
 
-              <button type="submit" className="btn btn-primary btn-large" disabled={loading} style={{ width: "100%" }}>
-                {loading ? <span className="loading-spinner" /> : "↗️ Get Quote"}
+              <button type="submit" className="btn btn-primary btn-large" disabled={quoteLoading} style={{ width: "100%" }}>
+                {quoteLoading ? <span className="loading-spinner" /> : "↗️ Get Quote"}
               </button>
             </div>
           </form>
@@ -248,11 +266,16 @@ export default function Home() {
                 <span style={{ fontSize: "1.5rem" }}>⚠️</span>
                 <div>
                   <div style={{ fontWeight: 600, color: "var(--text-primary)", marginBottom: "0.25rem" }}>
-                    Error
+                    {error.code || "Error"}
                   </div>
                   <div style={{ color: "var(--text-secondary)", fontSize: "0.9rem" }}>
-                    {error}
+                    {error.error}
                   </div>
+                  {error.details?.field && (
+                    <div style={{ color: "var(--text-light)", fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                      Field: {error.details.field}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -266,7 +289,7 @@ export default function Home() {
                     Swap Quote
                   </div>
                   <div style={{ color: "var(--text-secondary)", fontSize: "0.95rem", marginBottom: "0.75rem" }}>
-                    Based on constant product formula (with 30bps fee)
+                    Based on constant product formula (with {quote.feeBps || feeBps}bps fee)
                   </div>
                   <div style={{ 
                     display: "flex", 
@@ -279,7 +302,7 @@ export default function Home() {
                   }}>
                     <span style={{ fontWeight: 600, color: "var(--text-secondary)" }}>Output Amount:</span>
                     <span style={{ fontWeight: 700, fontSize: "1.25rem", color: "var(--success)" }}>
-                      {quote}
+                      {formatLargeNumber(quote.amountOut)}
                     </span>
                   </div>
                 </div>
@@ -291,10 +314,7 @@ export default function Home() {
 
           {/* Build Instruction Form */}
           {quote && (
-            <form onSubmit={e => {
-              e.preventDefault();
-              buildIx(swapParams);
-            }}>
+            <form onSubmit={handleBuildInstruction}>
               <h3 style={{ 
                 fontSize: "1.15rem", 
                 fontWeight: 700, 
@@ -312,8 +332,8 @@ export default function Home() {
               }}>
                 Generate a transaction instruction for executing the swap
               </p>
-              <button type="submit" className="btn btn-secondary btn-large" disabled={loading || !quote} style={{ width: "100%" }}>
-                {loading ? <span className="loading-spinner" /> : "🔨 Build Instruction"}
+              <button type="submit" className="btn btn-secondary btn-large" disabled={instructionLoading || !quote} style={{ width: "100%" }}>
+                {instructionLoading ? <span className="loading-spinner" /> : "🔨 Build Instruction"}
               </button>
             </form>
           )}

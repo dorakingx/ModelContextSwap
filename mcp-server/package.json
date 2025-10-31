@@ -8,8 +8,10 @@
   },
   "dependencies": {
     "fastify": "^4.0.0",
+    "@fastify/cors": "^10.0.1",
     "@mcp-it/fastify": "^0.1.1",
-    "dex-ai-sdk": "file:../sdk"
+    "dex-ai-sdk": "file:../sdk",
+    "pino-pretty": "^11.2.2"
   },
   "devDependencies": {
     "typescript": "^5.0.0",
