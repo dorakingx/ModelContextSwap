@@ -418,7 +418,32 @@ export default function Home() {
       // Show success message
       console.log(`Swap successful! Transaction signature: ${signature}`);
     } catch (err: any) {
-      console.error("Swap error:", err);
+      // Enhanced error logging
+      console.error("=== SWAP ERROR DETAILS ===");
+      console.error("Error Type:", typeof err);
+      console.error("Error Name:", err?.name);
+      console.error("Error Message:", err?.message);
+      console.error("Error Stack:", err?.stack);
+      
+      // Log error details if available
+      if (err.message && err.message.includes("Error Details:")) {
+        console.error("Full Error Details:");
+        console.error(err.message);
+      }
+      
+      // Log context at time of error
+      console.error("Context at error:", {
+        hasQuote: !!quote,
+        quoteAmountOut: quote?.amountOut?.toString(),
+        hasTokenFrom: !!tokenFrom,
+        tokenFromMint: tokenFrom?.mint,
+        hasTokenTo: !!tokenTo,
+        tokenToMint: tokenTo?.mint,
+        amountIn,
+        connected,
+        publicKey: publicKey?.toString(),
+      });
+      
       setSwapTxSignature(null);
       
       // Show user-friendly error message

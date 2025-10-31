@@ -240,6 +240,16 @@ export async function POST(req: NextRequest) {
       data: ix.data.toString("base64"),
     });
   } catch (err) {
+    // Enhanced error logging for debugging
+    console.error("[API] Error in build_solana_swap_instruction:", {
+      timestamp: new Date().toISOString(),
+      errorType: err instanceof Error ? err.constructor.name : typeof err,
+      errorMessage: err instanceof Error ? err.message : String(err),
+      errorStack: err instanceof Error ? err.stack : undefined,
+      isValidationError: err instanceof ValidationError,
+      requestPath: req.url,
+    });
+    
     if (err instanceof ValidationError) {
       return createErrorResponse(err, 400);
     }
@@ -250,6 +260,13 @@ export async function POST(req: NextRequest) {
         400
       );
     }
+    
+    // Log full error for debugging
+    if (err instanceof Error && err.message.includes("Error Details:")) {
+      console.error("[API] Detailed error information:");
+      console.error(err.message);
+    }
+    
     return createErrorResponse(err, 500);
   }
 }
