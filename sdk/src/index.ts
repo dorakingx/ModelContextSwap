@@ -506,11 +506,34 @@ export async function buildSwapIxWithAnchor(
       }
     }
     
+    // Critical: Anchor's Program constructor may process metadata.address from IDL
+    // Even though we pass programId as the second argument, Anchor might still
+    // try to translate metadata.address internally. Ensure it's never undefined.
+    // Also, some Anchor versions might process other IDL fields, so we ensure
+    // the entire IDL structure is clean.
+    
+    // Final check: Ensure sanitizedIdl is a plain object (not a class instance)
+    // that can be safely serialized and passed to Anchor
+    const finalIdl = JSON.parse(JSON.stringify(sanitizedIdl));
+    
+    // Re-validate metadata.address after JSON serialization
+    if (!finalIdl.metadata || !finalIdl.metadata.address) {
+      finalIdl.metadata = { address: freshProgramId.toString() };
+    } else {
+      finalIdl.metadata.address = freshProgramId.toString();
+    }
+    
+    // Ensure finalIdl has no undefined/null values
+    const finalIdlString = JSON.stringify(finalIdl);
+    if (finalIdlString.includes('undefined') || finalIdlString.includes('null')) {
+      throw new Error('Final IDL still contains undefined/null values after JSON serialization');
+    }
+    
     // Use sanitized IDL with fresh PublicKey instances to prevent _bn errors
     // Note: Anchor's Program constructor will call translateAddress internally
     // which may access _bn property of various addresses in the IDL
     // The constructor signature is: new Program(idl, programId, provider)
-    program = new Program(sanitizedIdl, freshProgramId, provider);
+    program = new Program(finalIdl, freshProgramId, provider);
   } catch (err: any) {
     // Enhanced error message for Program creation failures
     const idlMetadata = sanitizedIdl?.metadata || (idl as any).metadata;
