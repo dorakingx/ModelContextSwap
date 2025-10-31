@@ -1,5 +1,5 @@
 // src/index.ts
-import { PublicKey } from "@solana/web3.js";
+import { PublicKey, Connection } from "@solana/web3.js";
 import { getAccount } from "@solana/spl-token";
 
 // src/dex_ai.json
@@ -610,6 +610,9 @@ async function buildSwapIxWithAnchor(anchor, params, options) {
       if (!idlWithMetadata.address) {
         idlWithMetadata.address = idlWithMetadata.metadata?.address || ultraFreshProgramId.toString();
       }
+      if (!idlWithMetadata.address || typeof idlWithMetadata.address !== "string") {
+        throw new Error(`IDL address is invalid: ${typeof idlWithMetadata.address}, value: ${idlWithMetadata.address}`);
+      }
       try {
         const testIdlAddress = new PublicKey(idlWithMetadata.address);
         const testIdlAddressWithBn = testIdlAddress;
@@ -619,16 +622,38 @@ async function buildSwapIxWithAnchor(anchor, params, options) {
       } catch (err) {
         throw new Error(`IDL address validation failed: ${err.message}`);
       }
+      if (!provider || typeof provider !== "object") {
+        throw new Error("provider is invalid or undefined immediately before Program constructor call");
+      }
+      if (!provider.connection || !provider.wallet) {
+        throw new Error("provider is missing required properties (connection or wallet) immediately before Program constructor call");
+      }
+      if (!(provider.connection instanceof Connection)) {
+        throw new Error(`provider.connection is not a Connection instance: ${typeof provider.connection}, constructor: ${provider.connection?.constructor?.name || "unknown"}`);
+      }
+      if (typeof provider.wallet.signTransaction !== "function" || typeof provider.wallet.signAllTransactions !== "function") {
+        throw new Error("provider.wallet is missing required methods (signTransaction or signAllTransactions)");
+      }
       if (typeof console !== "undefined" && console.log) {
         try {
           console.log("[SDK] Calling Program constructor with correct signature:", {
             idlAddress: idlWithMetadata.address,
             idlAddressType: typeof idlWithMetadata.address,
+            idlHasAddress: !!idlWithMetadata.address,
             providerExists: !!provider,
-            providerType: typeof provider
+            providerType: typeof provider,
+            providerHasConnection: !!provider.connection,
+            providerHasWallet: !!provider.wallet,
+            providerWalletHasPubkey: !!provider.wallet?.publicKey
           });
         } catch {
         }
+      }
+      if (!idlWithMetadata.address || typeof idlWithMetadata.address !== "string") {
+        idlWithMetadata.address = ultraFreshProgramId.toString();
+      }
+      if (typeof idlWithMetadata.address !== "string" || idlWithMetadata.address.length === 0) {
+        throw new Error(`Final IDL address validation failed: ${typeof idlWithMetadata.address}, value: ${idlWithMetadata.address}`);
       }
       program = new Program(idlWithMetadata, provider);
     } catch (programErr) {

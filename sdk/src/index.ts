@@ -903,13 +903,18 @@ export async function buildSwapIxWithAnchor(
       // CRITICAL FIX: Anchor 0.30.1+ Program constructor signature is:
       // constructor(idl, provider, coder?, getCustomResolver?)
       // The programId is NOT a parameter - it's read from idl.address instead!
-      // So we must ensure idlWithMetadata.address (or idlWithMetadata.metadata.address) is set correctly
+      // So we must ensure idlWithMetadata.address is set correctly at the root level
       // and pass only (idl, provider) to the constructor
       
-      // Ensure idlWithMetadata has address property at the root level (not just in metadata)
+      // Ensure idlWithMetadata has address property at the root level
       // Anchor's Program constructor reads from idl.address, not idl.metadata.address
       if (!idlWithMetadata.address) {
         idlWithMetadata.address = idlWithMetadata.metadata?.address || ultraFreshProgramId.toString();
+      }
+      
+      // Validate idlWithMetadata.address is a string (not undefined/null)
+      if (!idlWithMetadata.address || typeof idlWithMetadata.address !== 'string') {
+        throw new Error(`IDL address is invalid: ${typeof idlWithMetadata.address}, value: ${idlWithMetadata.address}`);
       }
       
       // Validate idlWithMetadata.address can be converted to PublicKey
@@ -923,22 +928,59 @@ export async function buildSwapIxWithAnchor(
         throw new Error(`IDL address validation failed: ${err.message}`);
       }
       
-      // Log the corrected call
+      // Validate provider is still valid before Program constructor call
+      if (!provider || typeof provider !== 'object') {
+        throw new Error('provider is invalid or undefined immediately before Program constructor call');
+      }
+      
+      if (!provider.connection || !provider.wallet) {
+        throw new Error('provider is missing required properties (connection or wallet) immediately before Program constructor call');
+      }
+      
+      // CRITICAL: Validate provider.connection is a Connection instance
+      // EventManager constructor calls provider.connection.onLogs(), which requires a real Connection instance
+      if (!(provider.connection instanceof Connection)) {
+        throw new Error(`provider.connection is not a Connection instance: ${typeof provider.connection}, constructor: ${provider.connection?.constructor?.name || 'unknown'}`);
+      }
+      
+      // CRITICAL: Validate provider.wallet has required methods
+      // AnchorProvider expects wallet to have signTransaction and signAllTransactions methods
+      if (typeof provider.wallet.signTransaction !== 'function' || typeof provider.wallet.signAllTransactions !== 'function') {
+        throw new Error('provider.wallet is missing required methods (signTransaction or signAllTransactions)');
+      }
+      
+      // Log the corrected call with detailed info
       if (typeof console !== 'undefined' && console.log) {
         try {
           console.log('[SDK] Calling Program constructor with correct signature:', {
             idlAddress: idlWithMetadata.address,
             idlAddressType: typeof idlWithMetadata.address,
+            idlHasAddress: !!idlWithMetadata.address,
             providerExists: !!provider,
             providerType: typeof provider,
+            providerHasConnection: !!provider.connection,
+            providerHasWallet: !!provider.wallet,
+            providerWalletHasPubkey: !!provider.wallet?.publicKey,
           });
         } catch {
           // Ignore logging errors
         }
       }
       
+      // CRITICAL: Ensure idlWithMetadata.address is set one more time right before Program constructor
+      // This is a final safety check to ensure the address is set correctly
+      if (!idlWithMetadata.address || typeof idlWithMetadata.address !== 'string') {
+        idlWithMetadata.address = ultraFreshProgramId.toString();
+      }
+      
+      // Validate one final time that idlWithMetadata.address is a valid string
+      if (typeof idlWithMetadata.address !== 'string' || idlWithMetadata.address.length === 0) {
+        throw new Error(`Final IDL address validation failed: ${typeof idlWithMetadata.address}, value: ${idlWithMetadata.address}`);
+      }
+      
       // Call Program constructor with correct signature: (idl, provider)
-      // Anchor will read programId from idl.address internally
+      // Anchor will read programId from idl.address internally via translateAddress
+      // translateAddress expects a string or PublicKey, so ensure address is a string
       program = new Program(idlWithMetadata, provider);
     } catch (programErr: any) {
       // If error occurs, log detailed information about what was passed
