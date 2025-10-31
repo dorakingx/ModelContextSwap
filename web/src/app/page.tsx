@@ -254,44 +254,47 @@ export default function Home() {
       }
       
       // Derive pool address from token mints
-      const poolSeed = Buffer.concat([
+      // Each seed must be <= 32 bytes. Use multiple seeds instead of concatenating
+      const poolSeeds = [
         Buffer.from("pool"),
         tokenFromMint.toBuffer().slice(0, 8),
         tokenToMint.toBuffer().slice(0, 8),
-      ]);
-      const [pool] = PublicKey.findProgramAddressSync([poolSeed], programId);
+      ];
+      const [pool] = PublicKey.findProgramAddressSync(poolSeeds, programId);
       
       const user = publicKey;
       
       // Derive user token accounts (simplified - in production, these should be actual token accounts)
-      const userSourceSeed = Buffer.concat([
+      // Use first 8 bytes of mint address to keep seeds under 32 bytes
+      const userSourceSeeds = [
         Buffer.from("token"),
-        user.toBuffer(),
+        user.toBuffer().slice(0, 8), // Use only first 8 bytes of user address
         tokenFromMint.toBuffer().slice(0, 8),
-      ]);
-      const [userSource] = PublicKey.findProgramAddressSync([userSourceSeed], programId);
+      ];
+      const [userSource] = PublicKey.findProgramAddressSync(userSourceSeeds, programId);
       
-      const userDestinationSeed = Buffer.concat([
+      const userDestinationSeeds = [
         Buffer.from("token"),
-        user.toBuffer(),
+        user.toBuffer().slice(0, 8), // Use only first 8 bytes of user address
         tokenToMint.toBuffer().slice(0, 8),
-      ]);
-      const [userDestination] = PublicKey.findProgramAddressSync([userDestinationSeed], programId);
+      ];
+      const [userDestination] = PublicKey.findProgramAddressSync(userDestinationSeeds, programId);
       
       // Derive vault addresses
-      const vaultASeed = Buffer.concat([
+      // Use first 8 bytes of pool address to keep seeds manageable
+      const vaultASeeds = [
         Buffer.from("vault"),
-        pool.toBuffer(),
+        pool.toBuffer().slice(0, 8), // Use only first 8 bytes of pool address
         tokenFromMint.toBuffer().slice(0, 8),
-      ]);
-      const [vaultA] = PublicKey.findProgramAddressSync([vaultASeed], programId);
+      ];
+      const [vaultA] = PublicKey.findProgramAddressSync(vaultASeeds, programId);
       
-      const vaultBSeed = Buffer.concat([
+      const vaultBSeeds = [
         Buffer.from("vault"),
-        pool.toBuffer(),
+        pool.toBuffer().slice(0, 8), // Use only first 8 bytes of pool address
         tokenToMint.toBuffer().slice(0, 8),
-      ]);
-      const [vaultB] = PublicKey.findProgramAddressSync([vaultBSeed], programId);
+      ];
+      const [vaultB] = PublicKey.findProgramAddressSync(vaultBSeeds, programId);
       
       let tokenProgram: PublicKey;
       try {
