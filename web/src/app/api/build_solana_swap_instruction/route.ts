@@ -129,6 +129,32 @@ export async function POST(req: NextRequest) {
       throw new ValidationError("amountIn and minAmountOut must be provided", "amount");
     }
 
+    // Explicitly validate all PublicKeys are defined and valid
+    // Anchor requires PublicKeys to have _bn property, so we validate this here
+    const publicKeyValidations = [
+      { name: "programId", value: programId },
+      { name: "pool", value: pool },
+      { name: "user", value: user },
+      { name: "userSource", value: userSource },
+      { name: "userDestination", value: userDestination },
+      { name: "vaultA", value: vaultA },
+      { name: "vaultB", value: vaultB },
+      { name: "tokenProgram", value: tokenProgram },
+    ];
+
+    for (const { name, value } of publicKeyValidations) {
+      if (!value) {
+        throw new ValidationError(`PublicKey '${name}' is undefined or null after creation`, name);
+      }
+      if (!(value instanceof PublicKey)) {
+        throw new ValidationError(`'${name}' is not a PublicKey instance (got: ${typeof value})`, name);
+      }
+      // Verify PublicKey has _bn property (required by Anchor)
+      if (!("_bn" in value)) {
+        throw new ValidationError(`PublicKey '${name}' is missing _bn property`, name);
+      }
+    }
+
     const params = {
       programId,
       pool,

@@ -133,6 +133,31 @@ export async function buildSwapIxWithAnchor(anchor: AnchorExports, params: SwapB
       throw new Error("methods.swap() returned undefined");
     }
 
+    // Validate all account parameters are valid PublicKey instances
+    // Anchor checks for _bn property on accounts, so undefined/null will cause the error
+    const accountValidations = [
+      { name: "user", value: params.user },
+      { name: "userSource", value: params.userSource },
+      { name: "userDestination", value: params.userDestination },
+      { name: "pool", value: params.pool },
+      { name: "vaultA", value: params.vaultA },
+      { name: "vaultB", value: params.vaultB },
+      { name: "tokenProgram", value: params.tokenProgram },
+    ];
+
+    for (const { name, value } of accountValidations) {
+      if (!value) {
+        throw new Error(`Account parameter '${name}' is undefined or null`);
+      }
+      if (!(value instanceof PublicKey)) {
+        throw new Error(`Account parameter '${name}' is not a valid PublicKey instance (got: ${typeof value})`);
+      }
+      // Verify PublicKey has _bn property (required by Anchor for validation)
+      if (!("_bn" in value)) {
+        throw new Error(`Account parameter '${name}' PublicKey is missing _bn property`);
+      }
+    }
+
     const accountsBuilder = swapMethod.accounts({
       user: params.user,
       userSource: params.userSource,
