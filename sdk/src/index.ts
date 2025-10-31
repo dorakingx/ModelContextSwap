@@ -227,7 +227,20 @@ export async function buildSwapIxWithAnchor(
   const vaultB = assertPubkey("vaultB", params.vaultB);
   const tokenProgram = assertPubkey("tokenProgram", params.tokenProgram);
 
+  // Get provider - use provided provider or fallback to AnchorProvider.local()
+  // Note: AnchorProvider.local() may fail in serverless environments, so we expect
+  // the caller to provide a custom provider via AnchorProvider.local() override
   const provider = AnchorProvider.local();
+  
+  if (!provider) {
+    throw new Error("AnchorProvider.local() returned undefined or null");
+  }
+  
+  // Validate provider has required properties
+  if (!provider.connection) {
+    throw new Error("Provider is missing connection property");
+  }
+  
   const program = new Program(idl as any, programId, provider);
   
   // Validate and create BN instances using safeConvertToBN with enhanced validation
@@ -248,72 +261,160 @@ export async function buildSwapIxWithAnchor(
   
   // Build the instruction with explicit error handling at each step
   try {
+    // Validate program structure
+    if (!program || !program.methods) {
+      throw new Error("Program is invalid or methods are not available");
+    }
+    
     const methods = program.methods;
-    if (!methods || !methods.swap) {
-      throw new Error("program.methods.swap is not available");
+    if (!methods || typeof methods !== 'object') {
+      throw new Error("program.methods is invalid");
+    }
+    
+    if (!methods.swap || typeof methods.swap !== 'function') {
+      throw new Error("program.methods.swap is not available or not a function");
+    }
+
+    // Validate BN instances before calling swap method
+    if (!amountInBN || !minAmountOutBN) {
+      throw new Error(`BN instances are invalid: amountInBN=${!!amountInBN}, minAmountOutBN=${!!minAmountOutBN}`);
     }
 
     const swapMethod = methods.swap(amountInBN, minAmountOutBN);
     if (!swapMethod) {
-      throw new Error("methods.swap() returned undefined");
+      throw new Error("methods.swap() returned undefined or null");
+    }
+    
+    // Validate swapMethod has accounts method
+    if (!swapMethod.accounts || typeof swapMethod.accounts !== 'function') {
+      throw new Error("swapMethod.accounts is not a function");
     }
 
     // All accounts are already validated by assertPubkey above
-    // Double-check all accounts are defined and have _bn property before passing to Anchor
-    const accounts = {
-      user,
-      userSource,
-      userDestination,
-      pool,
-      vaultA,
-      vaultB,
-      tokenProgram,
-    };
+    // Create accounts object with explicit structure matching IDL order
+    // This ensures Anchor receives accounts in the correct order and format
+    const accounts: Record<string, PublicKey> = {};
+    
+    // Define accounts in IDL order to match Anchor's expectations
+    const accountDefinitions = [
+      { key: 'user', value: user },
+      { key: 'userSource', value: userSource },
+      { key: 'userDestination', value: userDestination },
+      { key: 'pool', value: pool },
+      { key: 'vaultA', value: vaultA },
+      { key: 'vaultB', value: vaultB },
+      { key: 'tokenProgram', value: tokenProgram },
+    ];
 
-    // Comprehensive validation before passing to Anchor
-    for (const [name, value] of Object.entries(accounts)) {
+    // Comprehensive validation and assignment
+    for (const { key, value } of accountDefinitions) {
       // Check if account is undefined or null
       if (value === undefined) {
-        throw new Error(`Account parameter '${name}' is undefined`);
+        throw new Error(`Account parameter '${key}' is undefined`);
       }
       if (value === null) {
-        throw new Error(`Account parameter '${name}' is null`);
+        throw new Error(`Account parameter '${key}' is null`);
       }
       
       // Check if it's a PublicKey instance
       if (!(value instanceof PublicKey)) {
         throw new Error(
-          `Account parameter '${name}' is not a PublicKey instance. Got: ${typeof value}, value: ${value}`
+          `Account parameter '${key}' is not a PublicKey instance. Got: ${typeof value}, value: ${value}`
         );
       }
       
       // Verify PublicKey has _bn property (required by Anchor for validation)
-      if (!("_bn" in value)) {
+      // Type assertion needed because _bn is not in PublicKey type definition but exists at runtime
+      const valueWithBn = value as any;
+      if (!("_bn" in valueWithBn)) {
         throw new Error(
-          `Account parameter '${name}' PublicKey is missing _bn property. PublicKey: ${value.toString()}`
+          `Account parameter '${key}' PublicKey is missing _bn property. PublicKey: ${value.toString()}`
         );
       }
       
       // Additional safety check: ensure _bn is not undefined
-      if (value._bn === undefined) {
+      if (valueWithBn._bn === undefined) {
         throw new Error(
-          `Account parameter '${name}' PublicKey has _bn property but it's undefined. PublicKey: ${value.toString()}`
+          `Account parameter '${key}' PublicKey has _bn property but it's undefined. PublicKey: ${value.toString()}`
         );
       }
+      
+      // Add to accounts object
+      accounts[key] = value;
     }
 
     // Create a new accounts object with only validated PublicKeys to ensure no undefined values
-    const validatedAccounts = {
-      user: accounts.user!,
-      userSource: accounts.userSource!,
-      userDestination: accounts.userDestination!,
-      pool: accounts.pool!,
-      vaultA: accounts.vaultA!,
-      vaultB: accounts.vaultB!,
-      tokenProgram: accounts.tokenProgram!,
-    };
+    // Build the object step by step with additional validation
+    const validatedAccounts: Record<string, PublicKey> = {};
+    
+    // Validate and add each account individually
+    const accountNames = ['user', 'userSource', 'userDestination', 'pool', 'vaultA', 'vaultB', 'tokenProgram'];
+    for (const name of accountNames) {
+      const accountValue = accounts[name as keyof typeof accounts];
+      
+      // Final validation check
+      if (!accountValue) {
+        throw new Error(`Account '${name}' is falsy when building validatedAccounts object`);
+      }
+      
+      if (!(accountValue instanceof PublicKey)) {
+        throw new Error(
+          `Account '${name}' is not a PublicKey instance. Got: ${typeof accountValue}, value: ${accountValue}`
+        );
+      }
+      
+      // Ensure _bn property exists and is not undefined
+      // Type assertion needed because _bn is not in PublicKey type definition but exists at runtime
+      const accountValueWithBn = accountValue as any;
+      if (!('_bn' in accountValueWithBn) || accountValueWithBn._bn === undefined) {
+        throw new Error(
+          `Account '${name}' PublicKey _bn property is missing or undefined. PublicKey: ${accountValue.toString()}`
+        );
+      }
+      
+      // Add to validated accounts object
+      validatedAccounts[name] = accountValue;
+    }
 
-    const accountsBuilder = swapMethod.accounts(validatedAccounts);
+    // Debug logging (development only)
+    if (typeof console !== 'undefined' && console.log) {
+      try {
+        console.log('[SDK] Accounts validation complete:', {
+          accountCount: Object.keys(validatedAccounts).length,
+          accountNames: Object.keys(validatedAccounts),
+          accountsValid: Object.values(validatedAccounts).every((pk) => {
+            const pkWithBn = pk as any;
+            return pk instanceof PublicKey && pkWithBn._bn !== undefined;
+          }),
+        });
+      } catch {
+        // Ignore logging errors
+      }
+    }
+
+    // Call swapMethod.accounts with additional error handling
+    let accountsBuilder;
+    try {
+      accountsBuilder = swapMethod.accounts(validatedAccounts);
+    } catch (err: any) {
+      // Enhanced error message for Anchor internal errors
+      const accountDetails = Object.entries(validatedAccounts).map(([name, pk]) => {
+        const pkWithBn = pk as any;
+        return {
+          name,
+          publicKey: pk.toString(),
+          has_bn: pkWithBn._bn !== undefined,
+          _bn_type: typeof pkWithBn._bn,
+          isPublicKey: pk instanceof PublicKey,
+        };
+      });
+      
+      throw new Error(
+        `Anchor swapMethod.accounts() failed: ${err.message || 'Unknown error'}\n` +
+        `Account details: ${JSON.stringify(accountDetails, null, 2)}\n` +
+        `Error stack: ${err.stack || 'No stack trace'}`
+      );
+    }
 
     if (!accountsBuilder) {
       throw new Error("swapMethod.accounts() returned undefined");

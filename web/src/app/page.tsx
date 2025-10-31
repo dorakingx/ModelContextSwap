@@ -251,6 +251,12 @@ export default function Home() {
       const programIdString = process.env.NEXT_PUBLIC_DEX_PROGRAM_ID || "11111111111111111111111111111111";
       const programId = assertPubkey("programId", programIdString);
       
+      // Validate programId has _bn property
+      const programIdWithBn = programId as any;
+      if (!("_bn" in programIdWithBn) || programIdWithBn._bn === undefined) {
+        throw new Error("Program ID PublicKey is missing _bn property");
+      }
+      
       // Derive pool address from token mints
       // Each seed must be <= 32 bytes. Use multiple seeds instead of concatenating
       const poolSeeds = [
@@ -263,11 +269,23 @@ export default function Home() {
         throw new Error("Failed to derive pool address");
       }
       
+      // Validate pool has _bn property
+      const poolWithBn = pool as any;
+      if (!("_bn" in poolWithBn) || poolWithBn._bn === undefined) {
+        throw new Error("Pool PublicKey is missing _bn property after derivation");
+      }
+      
       // Validate user publicKey is defined
       if (!publicKey) {
         throw new Error("User publicKey is missing");
       }
       const user = assertPubkey("user", publicKey);
+      
+      // Validate user has _bn property
+      const userWithBn = user as any;
+      if (!("_bn" in userWithBn) || userWithBn._bn === undefined) {
+        throw new Error("User PublicKey is missing _bn property after creation");
+      }
       
       // Derive user token accounts (simplified - in production, these should be actual token accounts)
       // Use first 8 bytes of mint address to keep seeds under 32 bytes
@@ -281,6 +299,12 @@ export default function Home() {
         throw new Error("Failed to derive userSource address");
       }
       
+      // Validate userSource has _bn property
+      const userSourceWithBn = userSource as any;
+      if (!("_bn" in userSourceWithBn) || userSourceWithBn._bn === undefined) {
+        throw new Error("UserSource PublicKey is missing _bn property after derivation");
+      }
+      
       const userDestinationSeeds = [
         Buffer.from("token"),
         user.toBuffer().slice(0, 8), // Use only first 8 bytes of user address
@@ -289,6 +313,12 @@ export default function Home() {
       const [userDestination] = PublicKey.findProgramAddressSync(userDestinationSeeds, programId);
       if (!userDestination) {
         throw new Error("Failed to derive userDestination address");
+      }
+      
+      // Validate userDestination has _bn property
+      const userDestinationWithBn = userDestination as any;
+      if (!("_bn" in userDestinationWithBn) || userDestinationWithBn._bn === undefined) {
+        throw new Error("UserDestination PublicKey is missing _bn property after derivation");
       }
       
       // Derive vault addresses
@@ -303,6 +333,12 @@ export default function Home() {
         throw new Error("Failed to derive vaultA address");
       }
       
+      // Validate vaultA has _bn property
+      const vaultAWithBn = vaultA as any;
+      if (!("_bn" in vaultAWithBn) || vaultAWithBn._bn === undefined) {
+        throw new Error("VaultA PublicKey is missing _bn property after derivation");
+      }
+      
       const vaultBSeeds = [
         Buffer.from("vault"),
         pool.toBuffer().slice(0, 8), // Use only first 8 bytes of pool address
@@ -313,7 +349,19 @@ export default function Home() {
         throw new Error("Failed to derive vaultB address");
       }
       
+      // Validate vaultB has _bn property
+      const vaultBWithBn = vaultB as any;
+      if (!("_bn" in vaultBWithBn) || vaultBWithBn._bn === undefined) {
+        throw new Error("VaultB PublicKey is missing _bn property after derivation");
+      }
+      
       const tokenProgram = assertPubkey("tokenProgram", "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+      
+      // Validate tokenProgram has _bn property
+      const tokenProgramWithBn = tokenProgram as any;
+      if (!("_bn" in tokenProgramWithBn) || tokenProgramWithBn._bn === undefined) {
+        throw new Error("TokenProgram PublicKey is missing _bn property after creation");
+      }
 
       // Build instruction
       const instructionParams: SwapInstructionRequest = {
@@ -380,15 +428,35 @@ export default function Home() {
         if (!k || k.pubkey === undefined || k.pubkey === null) {
           throw new Error(`Invalid account at index ${index}: pubkey is missing`);
         }
+        const pubkey = assertPubkey(`instructionData.keys[${index}].pubkey`, k.pubkey);
+        
+        // Validate _bn property exists after creation
+        const pubkeyWithBn = pubkey as any;
+        if (!("_bn" in pubkeyWithBn) || pubkeyWithBn._bn === undefined) {
+          throw new Error(
+            `PublicKey at index ${index} is missing _bn property after creation. PublicKey: ${pubkey.toString()}`
+          );
+        }
+        
         return {
-          pubkey: assertPubkey(`instructionData.keys[${index}].pubkey`, k.pubkey),
+          pubkey,
           isSigner: k.isSigner ?? false,
           isWritable: k.isWritable ?? false,
         };
       });
 
+      const programIdPubkey = assertPubkey("instructionData.programId", instructionData.programId);
+      
+      // Validate programId _bn property exists after creation
+      const programIdWithBn = programIdPubkey as any;
+      if (!("_bn" in programIdWithBn) || programIdWithBn._bn === undefined) {
+        throw new Error(
+          `Program ID PublicKey is missing _bn property after creation. PublicKey: ${programIdPubkey.toString()}`
+        );
+      }
+
       const swapIx = new TransactionInstruction({
-        programId: assertPubkey("instructionData.programId", instructionData.programId),
+        programId: programIdPubkey,
         keys: accountMetas,
         data: Buffer.from(instructionData.data, "base64"),
       });

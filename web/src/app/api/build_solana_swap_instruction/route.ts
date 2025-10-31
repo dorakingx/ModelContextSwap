@@ -218,15 +218,55 @@ export async function POST(req: NextRequest) {
       throw new Error(`BN initialization failed with value '${params.amountIn.toString()}': ${err.message}`);
     }
 
+    // Validate provider is valid before passing to SDK
+    if (!provider || !provider.connection) {
+      throw new Error("Provider is invalid: missing connection");
+    }
+    
+    // Verify provider wallet has publicKey
+    if (!provider.wallet || !provider.wallet.publicKey) {
+      throw new Error("Provider wallet is invalid: missing publicKey");
+    }
+    
+    // Validate provider wallet publicKey has _bn property
+    if (!("_bn" in provider.wallet.publicKey)) {
+      throw new Error("Provider wallet publicKey is missing _bn property");
+    }
+
     const anchorExports = {
       BN: anchor.BN, // Always use anchor.BN, not raw bn.js
       Program: anchor.Program,
       AnchorProvider: {
         // Override local() to return our custom provider
-        local: () => provider,
-        env: () => provider,
+        // This ensures we use the provider with the correct connection
+        local: () => {
+          if (!provider) {
+            throw new Error("Provider is undefined in AnchorProvider.local()");
+          }
+          return provider;
+        },
+        env: () => {
+          if (!provider) {
+            throw new Error("Provider is undefined in AnchorProvider.env()");
+          }
+          return provider;
+        },
       },
     };
+    
+    // Additional validation before calling SDK
+    console.log("[API] About to call buildSwapIxWithAnchor with params:", {
+      programId: params.programId.toString(),
+      pool: params.pool.toString(),
+      user: params.user.toString(),
+      userSource: params.userSource.toString(),
+      userDestination: params.userDestination.toString(),
+      vaultA: params.vaultA.toString(),
+      vaultB: params.vaultB.toString(),
+      tokenProgram: params.tokenProgram.toString(),
+      amountIn: params.amountIn.toString(),
+      minAmountOut: params.minAmountOut.toString(),
+    });
     
     const ix = await buildSwapIxWithAnchor(anchorExports, params);
 

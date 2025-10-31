@@ -170,6 +170,12 @@ async function buildSwapIxWithAnchor(anchor, params, options) {
   const vaultB = assertPubkey("vaultB", params.vaultB);
   const tokenProgram = assertPubkey("tokenProgram", params.tokenProgram);
   const provider = AnchorProvider.local();
+  if (!provider) {
+    throw new Error("AnchorProvider.local() returned undefined or null");
+  }
+  if (!provider.connection) {
+    throw new Error("Provider is missing connection property");
+  }
   const program = new Program(dex_ai_default, programId, provider);
   const amountInBN = safeConvertToBN("amountIn", BN, params.amountIn, { allowZero: false });
   const minAmountOutBN = safeConvertToBN("minAmountOut", BN, params.minAmountOut, { allowZero: false });
@@ -184,56 +190,114 @@ async function buildSwapIxWithAnchor(anchor, params, options) {
     }
   }
   try {
+    if (!program || !program.methods) {
+      throw new Error("Program is invalid or methods are not available");
+    }
     const methods = program.methods;
-    if (!methods || !methods.swap) {
-      throw new Error("program.methods.swap is not available");
+    if (!methods || typeof methods !== "object") {
+      throw new Error("program.methods is invalid");
+    }
+    if (!methods.swap || typeof methods.swap !== "function") {
+      throw new Error("program.methods.swap is not available or not a function");
+    }
+    if (!amountInBN || !minAmountOutBN) {
+      throw new Error(`BN instances are invalid: amountInBN=${!!amountInBN}, minAmountOutBN=${!!minAmountOutBN}`);
     }
     const swapMethod = methods.swap(amountInBN, minAmountOutBN);
     if (!swapMethod) {
-      throw new Error("methods.swap() returned undefined");
+      throw new Error("methods.swap() returned undefined or null");
     }
-    const accounts = {
-      user,
-      userSource,
-      userDestination,
-      pool,
-      vaultA,
-      vaultB,
-      tokenProgram
-    };
-    for (const [name, value] of Object.entries(accounts)) {
+    if (!swapMethod.accounts || typeof swapMethod.accounts !== "function") {
+      throw new Error("swapMethod.accounts is not a function");
+    }
+    const accounts = {};
+    const accountDefinitions = [
+      { key: "user", value: user },
+      { key: "userSource", value: userSource },
+      { key: "userDestination", value: userDestination },
+      { key: "pool", value: pool },
+      { key: "vaultA", value: vaultA },
+      { key: "vaultB", value: vaultB },
+      { key: "tokenProgram", value: tokenProgram }
+    ];
+    for (const { key, value } of accountDefinitions) {
       if (value === void 0) {
-        throw new Error(`Account parameter '${name}' is undefined`);
+        throw new Error(`Account parameter '${key}' is undefined`);
       }
       if (value === null) {
-        throw new Error(`Account parameter '${name}' is null`);
+        throw new Error(`Account parameter '${key}' is null`);
       }
       if (!(value instanceof PublicKey)) {
         throw new Error(
-          `Account parameter '${name}' is not a PublicKey instance. Got: ${typeof value}, value: ${value}`
+          `Account parameter '${key}' is not a PublicKey instance. Got: ${typeof value}, value: ${value}`
         );
       }
-      if (!("_bn" in value)) {
+      const valueWithBn = value;
+      if (!("_bn" in valueWithBn)) {
         throw new Error(
-          `Account parameter '${name}' PublicKey is missing _bn property. PublicKey: ${value.toString()}`
+          `Account parameter '${key}' PublicKey is missing _bn property. PublicKey: ${value.toString()}`
         );
       }
-      if (value._bn === void 0) {
+      if (valueWithBn._bn === void 0) {
         throw new Error(
-          `Account parameter '${name}' PublicKey has _bn property but it's undefined. PublicKey: ${value.toString()}`
+          `Account parameter '${key}' PublicKey has _bn property but it's undefined. PublicKey: ${value.toString()}`
         );
+      }
+      accounts[key] = value;
+    }
+    const validatedAccounts = {};
+    const accountNames = ["user", "userSource", "userDestination", "pool", "vaultA", "vaultB", "tokenProgram"];
+    for (const name of accountNames) {
+      const accountValue = accounts[name];
+      if (!accountValue) {
+        throw new Error(`Account '${name}' is falsy when building validatedAccounts object`);
+      }
+      if (!(accountValue instanceof PublicKey)) {
+        throw new Error(
+          `Account '${name}' is not a PublicKey instance. Got: ${typeof accountValue}, value: ${accountValue}`
+        );
+      }
+      const accountValueWithBn = accountValue;
+      if (!("_bn" in accountValueWithBn) || accountValueWithBn._bn === void 0) {
+        throw new Error(
+          `Account '${name}' PublicKey _bn property is missing or undefined. PublicKey: ${accountValue.toString()}`
+        );
+      }
+      validatedAccounts[name] = accountValue;
+    }
+    if (typeof console !== "undefined" && console.log) {
+      try {
+        console.log("[SDK] Accounts validation complete:", {
+          accountCount: Object.keys(validatedAccounts).length,
+          accountNames: Object.keys(validatedAccounts),
+          accountsValid: Object.values(validatedAccounts).every((pk) => {
+            const pkWithBn = pk;
+            return pk instanceof PublicKey && pkWithBn._bn !== void 0;
+          })
+        });
+      } catch {
       }
     }
-    const validatedAccounts = {
-      user: accounts.user,
-      userSource: accounts.userSource,
-      userDestination: accounts.userDestination,
-      pool: accounts.pool,
-      vaultA: accounts.vaultA,
-      vaultB: accounts.vaultB,
-      tokenProgram: accounts.tokenProgram
-    };
-    const accountsBuilder = swapMethod.accounts(validatedAccounts);
+    let accountsBuilder;
+    try {
+      accountsBuilder = swapMethod.accounts(validatedAccounts);
+    } catch (err) {
+      const accountDetails = Object.entries(validatedAccounts).map(([name, pk]) => {
+        const pkWithBn = pk;
+        return {
+          name,
+          publicKey: pk.toString(),
+          has_bn: pkWithBn._bn !== void 0,
+          _bn_type: typeof pkWithBn._bn,
+          isPublicKey: pk instanceof PublicKey
+        };
+      });
+      throw new Error(
+        `Anchor swapMethod.accounts() failed: ${err.message || "Unknown error"}
+Account details: ${JSON.stringify(accountDetails, null, 2)}
+Error stack: ${err.stack || "No stack trace"}`
+      );
+    }
     if (!accountsBuilder) {
       throw new Error("swapMethod.accounts() returned undefined");
     }
