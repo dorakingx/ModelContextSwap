@@ -255,14 +255,20 @@ a {
   flex: 1;
   font-size: 1.5rem;
   font-weight: 600;
-  color: var(--text-primary);
+  color: #1D1D1D;
   border: none;
   background: transparent;
   padding: 0.5rem 0;
 }
 
+.token-input-value::placeholder {
+  color: #999999;
+  opacity: 1;
+}
+
 .token-input-value:focus {
   outline: none;
+  color: #1D1D1D;
 }
 
 .token-info {
