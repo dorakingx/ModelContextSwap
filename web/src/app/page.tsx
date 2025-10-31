@@ -103,8 +103,9 @@ export default function Home() {
   return (
     <div style={{ 
       minHeight: "100vh", 
-      background: "linear-gradient(135deg, var(--bg-light) 0%, var(--bg-white) 100%)",
-      padding: "2rem 0"
+      background: "var(--bg-light)",
+      padding: "2rem 0",
+      position: "relative"
     }}>
       <div className="container">
         {/* Header */}
@@ -114,32 +115,47 @@ export default function Home() {
           padding: "2rem 0"
         }}>
           <h1 style={{ 
-            fontSize: "3rem", 
-            fontWeight: 800, 
+            fontSize: "3.5rem", 
+            fontWeight: 700, 
             color: "var(--primary-red)",
             marginBottom: "0.5rem",
-            letterSpacing: "-0.02em"
+            letterSpacing: "-0.03em",
+            background: "linear-gradient(135deg, var(--primary-red) 0%, var(--accent-red) 100%)",
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent",
+            backgroundClip: "text"
           }}>
             Model Context Swap
           </h1>
           <p style={{ 
-            fontSize: "1.2rem", 
+            fontSize: "1.15rem", 
             color: "var(--text-secondary)",
             maxWidth: "600px",
-            margin: "0 auto"
+            margin: "0 auto",
+            fontWeight: 500
           }}>
             AI agent-friendly DEX on Solana with Model Context Protocol integration
           </p>
         </div>
 
         {/* DEX Functionality Section */}
-        <div className="card">
-          <h2 className="card-title">
-            <span>🔄</span>
-            DEX Swap Functions
+        <div className="card-elevated" style={{ maxWidth: "600px", margin: "0 auto 3rem" }}>
+          <h2 style={{ 
+            fontSize: "1.75rem", 
+            fontWeight: 700, 
+            color: "var(--text-primary)",
+            marginBottom: "0.75rem",
+            textAlign: "center"
+          }}>
+            Swap Tokens
           </h2>
-          <p className="card-subtitle">
-            Get quotes and build swap instructions for Solana DEX
+          <p style={{ 
+            fontSize: "1rem", 
+            color: "var(--text-secondary)",
+            marginBottom: "2rem",
+            textAlign: "center"
+          }}>
+            Get deterministic quotes and build swap instructions
           </p>
 
           {/* Get Quote Form */}
@@ -148,255 +164,341 @@ export default function Home() {
             getQuote(amountIn, reserveIn, reserveOut, feeBps);
             setSwapParams({ amountIn, reserveIn, reserveOut, feeBps });
           }}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem", marginBottom: "1.5rem" }}>
-              <div className="input-group">
-                <label className="input-label">Input Amount</label>
-                <input
-                  className="input-field"
-                  placeholder="1000000"
-                  value={amountIn}
-                  onChange={e => setAmountIn(e.target.value)}
-                  required
-                />
+            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+              <div className="token-input-container">
+                <div style={{ 
+                  fontSize: "0.85rem", 
+                  fontWeight: 600, 
+                  color: "var(--text-secondary)",
+                  marginBottom: "0.5rem"
+                }}>
+                  You Pay
+                </div>
+                <div className="token-input-row">
+                  <input
+                    className="token-input-value"
+                    placeholder="0.0"
+                    value={amountIn}
+                    onChange={e => setAmountIn(e.target.value)}
+                    required
+                  />
+                  <div className="token-info">
+                    <span>Amount In</span>
+                  </div>
+                </div>
               </div>
-              <div className="input-group">
-                <label className="input-label">Reserve In</label>
-                <input
-                  className="input-field"
-                  placeholder="1000000000"
-                  value={reserveIn}
-                  onChange={e => setReserveIn(e.target.value)}
-                  required
-                />
+
+              <div style={{ display: "flex", justifyContent: "center", margin: "0.5rem 0" }}>
+                <div className="swap-arrow" onClick={() => {}}>
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path d="M7 10L12 15L17 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </div>
               </div>
-              <div className="input-group">
-                <label className="input-label">Reserve Out</label>
-                <input
-                  className="input-field"
-                  placeholder="1000000000"
-                  value={reserveOut}
-                  onChange={e => setReserveOut(e.target.value)}
-                  required
-                />
+
+              <div className="token-input-container">
+                <div style={{ 
+                  fontSize: "0.85rem", 
+                  fontWeight: 600, 
+                  color: "var(--text-secondary)",
+                  marginBottom: "0.5rem"
+                }}>
+                  You Receive
+                </div>
+                <div className="token-input-row">
+                  <input
+                    className="token-input-value"
+                    placeholder="0.0"
+                    value={reserveOut}
+                    onChange={e => setReserveOut(e.target.value)}
+                    required
+                  />
+                  <div className="token-info">
+                    <span>Reserve Out</span>
+                  </div>
+                </div>
               </div>
-              <div className="input-group">
-                <label className="input-label">Fee (bps)</label>
-                <input
-                  className="input-field"
-                  placeholder="30"
-                  value={feeBps}
-                  onChange={e => setFeeBps(e.target.value)}
-                  required
-                />
+
+              <div style={{ 
+                padding: "1.5rem", 
+                background: "var(--bg-secondary)", 
+                borderRadius: "16px",
+                border: "1px solid var(--border-default)"
+              }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+                  <div className="input-group" style={{ marginBottom: 0 }}>
+                    <label className="input-label" style={{ fontSize: "0.85rem" }}>Reserve In</label>
+                    <input
+                      className="input-field"
+                      placeholder="1000000000"
+                      value={reserveIn}
+                      onChange={e => setReserveIn(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="input-group" style={{ marginBottom: 0 }}>
+                    <label className="input-label" style={{ fontSize: "0.85rem" }}>Fee (bps)</label>
+                    <input
+                      className="input-field"
+                      placeholder="30"
+                      value={feeBps}
+                      onChange={e => setFeeBps(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
               </div>
+
+              <button type="submit" className="btn btn-primary btn-large" disabled={loading} style={{ width: "100%" }}>
+                {loading ? <span className="loading-spinner" /> : "↗️ Get Quote"}
+              </button>
             </div>
-            <button type="submit" className="btn btn-primary" disabled={loading}>
-              {loading ? <span className="loading-spinner" /> : null}
-              Get Quote
-            </button>
           </form>
 
           {/* Quote Result */}
           {error && (
-            <div style={{ 
-              marginTop: "1.5rem", 
-              padding: "1rem", 
-              background: "rgba(239, 68, 68, 0.1)", 
-              border: "1px solid var(--error)", 
-              borderRadius: "8px",
-              color: "var(--error)"
-            }}>
-              ⚠️ {error}
+            <div className="error-card">
+              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                <span style={{ fontSize: "1.5rem" }}>⚠️</span>
+                <div>
+                  <div style={{ fontWeight: 600, color: "var(--text-primary)", marginBottom: "0.25rem" }}>
+                    Error
+                  </div>
+                  <div style={{ color: "var(--text-secondary)", fontSize: "0.9rem" }}>
+                    {error}
+                  </div>
+                </div>
+              </div>
             </div>
           )}
           {quote && (
-            <div style={{ 
-              marginTop: "1.5rem", 
-              padding: "1rem", 
-              background: "rgba(16, 185, 129, 0.1)", 
-              border: "1px solid var(--success)", 
-              borderRadius: "8px",
-              color: "var(--success)"
-            }}>
-              <strong>Output Amount:</strong> {quote}
+            <div className="result-card">
+              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                <span style={{ fontSize: "1.5rem" }}>✓</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, color: "var(--text-primary)", marginBottom: "0.25rem" }}>
+                    Swap Quote
+                  </div>
+                  <div style={{ color: "var(--text-secondary)", fontSize: "0.95rem", marginBottom: "0.75rem" }}>
+                    Based on constant product formula (with 30bps fee)
+                  </div>
+                  <div style={{ 
+                    display: "flex", 
+                    justifyContent: "space-between", 
+                    alignItems: "center",
+                    padding: "1rem",
+                    background: "var(--bg-light)",
+                    borderRadius: "12px",
+                    border: "1px solid var(--border-default)"
+                  }}>
+                    <span style={{ fontWeight: 600, color: "var(--text-secondary)" }}>Output Amount:</span>
+                    <span style={{ fontWeight: 700, fontSize: "1.25rem", color: "var(--success)" }}>
+                      {quote}
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
           <div className="divider" />
 
           {/* Build Instruction Form */}
-          <form onSubmit={e => {
-            e.preventDefault();
-            buildIx(swapParams);
-          }}>
-            <h3 style={{ 
-              fontSize: "1.2rem", 
-              fontWeight: 700, 
-              color: "var(--text-primary)",
-              marginBottom: "1rem"
+          {quote && (
+            <form onSubmit={e => {
+              e.preventDefault();
+              buildIx(swapParams);
             }}>
-              Build Solana Swap Instruction
-            </h3>
-            <div style={{ 
-              color: "var(--text-secondary)",
-              fontSize: "0.9rem",
-              marginBottom: "1rem",
-              padding: "1rem",
-              background: "var(--button-secondary)",
-              borderRadius: "8px"
-            }}>
-              <p style={{ marginBottom: "0.5rem" }}>
-                ℹ️ This will build the instruction using the parameters from the quote above.
+              <h3 style={{ 
+                fontSize: "1.15rem", 
+                fontWeight: 700, 
+                color: "var(--text-primary)",
+                marginBottom: "1rem",
+                textAlign: "center"
+              }}>
+                Build Solana Instruction
+              </h3>
+              <p style={{ 
+                color: "var(--text-secondary)",
+                fontSize: "0.9rem",
+                marginBottom: "1.5rem",
+                textAlign: "center"
+              }}>
+                Generate a transaction instruction for executing the swap
               </p>
-              <p style={{ fontSize: "0.85rem" }}>
-                Note: Full implementation requires wallet integration via @solana/wallet-adapter-react
-              </p>
-            </div>
-            <button type="submit" className="btn btn-secondary" disabled={loading || !quote}>
-              {loading ? <span className="loading-spinner" /> : null}
-              Build Instruction
-            </button>
-          </form>
+              <button type="submit" className="btn btn-secondary btn-large" disabled={loading || !quote} style={{ width: "100%" }}>
+                {loading ? <span className="loading-spinner" /> : "🔨 Build Instruction"}
+              </button>
+            </form>
+          )}
 
           {/* Instruction Result */}
           {instruction && (
-            <div style={{ 
-              marginTop: "1.5rem", 
-              background: "var(--button-secondary)", 
-              padding: "1.5rem", 
-              borderRadius: "12px", 
-              overflowX: "auto"
-            }}>
+            <div className="result-card" style={{ marginTop: "1.5rem" }}>
               <h4 style={{ 
                 fontSize: "1rem", 
                 fontWeight: 700, 
                 color: "var(--text-primary)",
-                marginBottom: "1rem"
+                marginBottom: "1rem",
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem"
               }}>
-                Instruction Data:
+                <span>✓</span>
+                Instruction Built Successfully
               </h4>
-              <pre style={{ 
-                fontSize: "0.85rem", 
-                color: "var(--text-secondary)",
-                margin: 0,
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-all"
+              <div style={{ 
+                background: "var(--bg-secondary)", 
+                padding: "1.5rem", 
+                borderRadius: "12px", 
+                overflowX: "auto",
+                border: "1px solid var(--border-default)"
               }}>
-                {JSON.stringify(instruction, null, 2)}
-              </pre>
+                <pre style={{ 
+                  fontSize: "0.85rem", 
+                  color: "var(--text-secondary)",
+                  margin: 0,
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-all",
+                  fontFamily: "var(--font-geist-mono)"
+                }}>
+                  {JSON.stringify(instruction, null, 2)}
+                </pre>
+              </div>
             </div>
           )}
         </div>
 
         {/* MCP Server Section */}
-        <div className="card">
-          <h2 className="card-title">
-            <span>🔗</span>
-            MCP Server Status
-          </h2>
-          <p className="card-subtitle">
+        <div className="card" style={{ marginTop: "2rem" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1rem" }}>
+            <h2 style={{ fontSize: "1.5rem", fontWeight: 700, color: "var(--text-primary)" }}>
+              MCP Server
+            </h2>
+            <div className={`status-badge ${mcpStatus === "active" ? "status-active" : "status-inactive"}`}>
+              <span className="icon-dot"></span>
+              {mcpStatus === "checking" && "Checking..."}
+              {mcpStatus === "active" && "Active"}
+              {mcpStatus === "inactive" && "Inactive"}
+            </div>
+          </div>
+          <p style={{ fontSize: "0.95rem", color: "var(--text-secondary)", marginBottom: "2rem" }}>
             Model Context Protocol server for AI agent integration
           </p>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-            {/* Status Badge */}
-            <div>
-              <div className={`status-badge ${mcpStatus === "active" ? "status-active" : "status-inactive"}`}>
-                <span className="icon-dot"></span>
-                {mcpStatus === "checking" && "Checking..."}
-                {mcpStatus === "active" && "Server Active"}
-                {mcpStatus === "inactive" && "Server Inactive"}
+          {mcpError && (
+            <div className="error-card" style={{ marginBottom: "2rem" }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem" }}>
+                <span style={{ fontSize: "1.25rem" }}>⚠️</span>
+                <div>
+                  <div style={{ fontWeight: 600, color: "var(--text-primary)", marginBottom: "0.25rem" }}>
+                    Connection Error
+                  </div>
+                  <div style={{ color: "var(--text-secondary)", fontSize: "0.9rem" }}>
+                    {mcpError}
+                  </div>
+                </div>
               </div>
             </div>
+          )}
 
-            {mcpError && (
+          {/* API Endpoints */}
+          <div className="feature-grid">
+            <div className="feature-item">
               <div style={{ 
-                padding: "1rem", 
-                background: "rgba(239, 68, 68, 0.1)", 
-                border: "1px solid var(--error)", 
-                borderRadius: "8px",
-                color: "var(--error)"
+                display: "flex", 
+                alignItems: "center", 
+                gap: "0.75rem",
+                marginBottom: "0.75rem"
               }}>
-                ⚠️ {mcpError}
-              </div>
-            )}
-
-            {/* API Endpoints */}
-            <div>
-              <h4 style={{ 
-                fontSize: "1.1rem", 
-                fontWeight: 700, 
-                color: "var(--text-primary)",
-                marginBottom: "1rem"
-              }}>
-                Available Endpoints
-              </h4>
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
                 <div style={{ 
-                  padding: "1rem", 
-                  background: "var(--button-secondary)", 
-                  borderRadius: "8px",
-                  border: "1px solid var(--input-border)"
+                  width: "40px", 
+                  height: "40px", 
+                  borderRadius: "12px",
+                  background: "rgba(230, 57, 70, 0.1)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center"
                 }}>
-                  <div style={{ 
-                    fontFamily: "monospace", 
-                    fontSize: "0.9rem", 
-                    fontWeight: 600,
-                    color: "var(--primary-red)",
-                    marginBottom: "0.25rem"
-                  }}>
-                    POST /get_dex_quote
-                  </div>
-                  <div style={{ 
-                    fontSize: "0.85rem", 
-                    color: "var(--text-secondary)"
-                  }}>
-                    Get a deterministic quote for token swaps with fee calculation (30bps)
-                  </div>
+                  <span style={{ fontSize: "1.25rem" }}>📊</span>
                 </div>
                 <div style={{ 
-                  padding: "1rem", 
-                  background: "var(--button-secondary)", 
-                  borderRadius: "8px",
-                  border: "1px solid var(--input-border)"
+                  fontFamily: "monospace", 
+                  fontSize: "0.85rem", 
+                  fontWeight: 600,
+                  color: "var(--primary-red)"
                 }}>
-                  <div style={{ 
-                    fontFamily: "monospace", 
-                    fontSize: "0.9rem", 
-                    fontWeight: 600,
-                    color: "var(--primary-red)",
-                    marginBottom: "0.25rem"
-                  }}>
-                    POST /build_solana_swap_instruction
-                  </div>
-                  <div style={{ 
-                    fontSize: "0.85rem", 
-                    color: "var(--text-secondary)"
-                  }}>
-                    Build a Solana transaction instruction for executing swaps
-                  </div>
+                  POST /get_dex_quote
                 </div>
               </div>
-            </div>
-
-            {/* Connection Info */}
-            <div style={{ 
-              padding: "1rem", 
-              background: "var(--bg-light)", 
-              borderRadius: "8px",
-              border: "1px solid var(--card-border)"
-            }}>
               <div style={{ 
                 fontSize: "0.9rem", 
                 color: "var(--text-secondary)",
                 lineHeight: "1.6"
               }}>
-                <strong style={{ color: "var(--text-primary)" }}>Connection:</strong> localhost:8080
-                <br />
-                <strong style={{ color: "var(--text-primary)" }}>Framework:</strong> Fastify with MCP Plugin
-                <br />
-                <strong style={{ color: "var(--text-primary)" }}>SDK:</strong> dex-ai-sdk
+                Get deterministic quotes for token swaps with 30bps fee calculation
               </div>
+            </div>
+
+            <div className="feature-item">
+              <div style={{ 
+                display: "flex", 
+                alignItems: "center", 
+                gap: "0.75rem",
+                marginBottom: "0.75rem"
+              }}>
+                <div style={{ 
+                  width: "40px", 
+                  height: "40px", 
+                  borderRadius: "12px",
+                  background: "rgba(230, 57, 70, 0.1)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center"
+                }}>
+                  <span style={{ fontSize: "1.25rem" }}>🔨</span>
+                </div>
+                <div style={{ 
+                  fontFamily: "monospace", 
+                  fontSize: "0.85rem", 
+                  fontWeight: 600,
+                  color: "var(--primary-red)"
+                }}>
+                  POST /build_solana_swap_instruction
+                </div>
+              </div>
+              <div style={{ 
+                fontSize: "0.9rem", 
+                color: "var(--text-secondary)",
+                lineHeight: "1.6"
+              }}>
+                Build Solana transaction instructions for executing swaps on-chain
+              </div>
+            </div>
+          </div>
+
+          {/* Connection Info */}
+          <div style={{ 
+            marginTop: "2rem", 
+            padding: "1.5rem", 
+            background: "var(--bg-secondary)", 
+            borderRadius: "16px",
+            border: "1px solid var(--border-default)"
+          }}>
+            <div style={{ 
+              fontSize: "0.9rem", 
+              color: "var(--text-secondary)",
+              lineHeight: "2",
+              display: "grid",
+              gridTemplateColumns: "auto 1fr",
+              gap: "0 1rem"
+            }}>
+              <strong style={{ color: "var(--text-primary)" }}>Connection:</strong>
+              <span>localhost:8080</span>
+              <strong style={{ color: "var(--text-primary)" }}>Framework:</strong>
+              <span>Fastify with MCP Plugin</span>
+              <strong style={{ color: "var(--text-primary)" }}>SDK:</strong>
+              <span>dex-ai-sdk</span>
             </div>
           </div>
         </div>
@@ -404,20 +506,21 @@ export default function Home() {
         {/* Footer */}
         <div style={{ 
           textAlign: "center", 
-          marginTop: "3rem", 
+          marginTop: "4rem", 
           paddingTop: "2rem",
-          borderTop: "1px solid var(--card-border)"
+          borderTop: "1px solid var(--border-default)"
         }}>
           <p style={{ 
-            color: "var(--text-light)", 
-            fontSize: "0.9rem"
+            color: "var(--text-secondary)", 
+            fontSize: "1rem",
+            fontWeight: 500,
+            marginBottom: "0.5rem"
           }}>
             Powered by MCP Server & dex-ai-sdk on Next.js
           </p>
           <p style={{ 
             color: "var(--text-light)", 
-            fontSize: "0.85rem",
-            marginTop: "0.5rem"
+            fontSize: "0.9rem"
           }}>
             Designed for AI agents with deterministic quotes and minimal slippage
           </p>
