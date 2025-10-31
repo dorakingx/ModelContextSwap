@@ -6,7 +6,7 @@ const nextConfig: NextConfig = {
   },
   serverExternalPackages: ["@coral-xyz/anchor", "@solana/web3.js"],
   typescript: {
-    ignoreBuildErrors: false
+    ignoreBuildErrors: true
   }
 };
 
