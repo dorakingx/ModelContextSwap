@@ -563,6 +563,29 @@ async function buildSwapIxWithAnchor(anchor, params, options) {
       }
     }
     try {
+      if (!provider.wallet || !provider.wallet.publicKey) {
+        throw new Error("provider.wallet.publicKey became invalid immediately before Program constructor call");
+      }
+      const finalWalletPubkeyWithBn = provider.wallet.publicKey;
+      if (!("_bn" in finalWalletPubkeyWithBn) || finalWalletPubkeyWithBn._bn === void 0) {
+        provider.wallet.publicKey = new import_web3.PublicKey(provider.wallet.publicKey.toString());
+        const recreatedFinalWalletPubkeyWithBn = provider.wallet.publicKey;
+        if (!("_bn" in recreatedFinalWalletPubkeyWithBn) || recreatedFinalWalletPubkeyWithBn._bn === void 0) {
+          throw new Error("Failed to recreate provider.wallet.publicKey with _bn property immediately before Program constructor call");
+        }
+      }
+      if (!provider.publicKey) {
+        provider.publicKey = provider.wallet.publicKey;
+      } else {
+        const finalProviderPubkeyWithBnCheck = provider.publicKey;
+        if (!("_bn" in finalProviderPubkeyWithBnCheck) || finalProviderPubkeyWithBnCheck._bn === void 0) {
+          provider.publicKey = new import_web3.PublicKey(provider.publicKey.toString());
+          const recreatedFinalProviderPubkeyWithBnCheck = provider.publicKey;
+          if (!("_bn" in recreatedFinalProviderPubkeyWithBnCheck) || recreatedFinalProviderPubkeyWithBnCheck._bn === void 0) {
+            provider.publicKey = provider.wallet.publicKey;
+          }
+        }
+      }
       program = new Program(finalIdl, freshProgramId, provider);
     } catch (programErr) {
       const debugInfo = {

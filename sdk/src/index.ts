@@ -755,7 +755,51 @@ export async function buildSwapIxWithAnchor(
     }
     
     // Wrap Program constructor call in try-catch to catch any immediate errors
+    // CRITICAL: Anchor's Program constructor may internally call translateAddress
+    // on various values. We need to ensure all possible values are valid.
+    // 
+    // Based on Anchor's source code, Program constructor does:
+    // 1. translateAddress(programId || idl.metadata?.address)
+    // 2. May access provider properties
+    // 3. May process IDL fields
+    //
+    // Since we've removed metadata.address and validated all other values,
+    // the issue might be that Anchor is accessing a property that becomes
+    // undefined during the constructor execution.
+    //
+    // To work around this, we'll wrap the Program constructor call and
+    // provide a custom translateAddress-like function if needed.
+    
     try {
+      // Final validation: ensure provider.wallet.publicKey is still valid
+      // Anchor may access this during Program construction
+      if (!provider.wallet || !provider.wallet.publicKey) {
+        throw new Error('provider.wallet.publicKey became invalid immediately before Program constructor call');
+      }
+      
+      const finalWalletPubkeyWithBn = provider.wallet.publicKey as any;
+      if (!("_bn" in finalWalletPubkeyWithBn) || finalWalletPubkeyWithBn._bn === undefined) {
+        provider.wallet.publicKey = new PublicKey(provider.wallet.publicKey.toString());
+        const recreatedFinalWalletPubkeyWithBn = provider.wallet.publicKey as any;
+        if (!("_bn" in recreatedFinalWalletPubkeyWithBn) || recreatedFinalWalletPubkeyWithBn._bn === undefined) {
+          throw new Error('Failed to recreate provider.wallet.publicKey with _bn property immediately before Program constructor call');
+        }
+      }
+      
+      // Ensure provider.publicKey is still valid
+      if (!provider.publicKey) {
+        provider.publicKey = provider.wallet.publicKey;
+      } else {
+        const finalProviderPubkeyWithBnCheck = provider.publicKey as any;
+        if (!("_bn" in finalProviderPubkeyWithBnCheck) || finalProviderPubkeyWithBnCheck._bn === undefined) {
+          provider.publicKey = new PublicKey(provider.publicKey.toString());
+          const recreatedFinalProviderPubkeyWithBnCheck = provider.publicKey as any;
+          if (!("_bn" in recreatedFinalProviderPubkeyWithBnCheck) || recreatedFinalProviderPubkeyWithBnCheck._bn === undefined) {
+            provider.publicKey = provider.wallet.publicKey;
+          }
+        }
+      }
+      
       program = new Program(finalIdl, freshProgramId, provider);
     } catch (programErr: any) {
       // If error occurs, log detailed information about what was passed
