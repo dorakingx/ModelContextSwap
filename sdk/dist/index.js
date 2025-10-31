@@ -574,19 +574,31 @@ async function buildSwapIxWithAnchor(anchor, params, options) {
       } catch (err) {
         throw new Error(`IDL metadata.address is invalid: ${err.message}`);
       }
+      if (freshProgramId === void 0 || freshProgramId === null) {
+        throw new Error("freshProgramId became undefined/null immediately before Program constructor call");
+      }
+      if (!(freshProgramId instanceof PublicKey)) {
+        throw new Error("freshProgramId is not a PublicKey instance immediately before Program constructor call");
+      }
+      const ultraFreshProgramId = new PublicKey(freshProgramId.toString());
+      const ultraFreshProgramIdWithBn = ultraFreshProgramId;
+      if (!("_bn" in ultraFreshProgramIdWithBn) || ultraFreshProgramIdWithBn._bn === void 0) {
+        throw new Error("Failed to create ultra-fresh programId with _bn property");
+      }
       if (typeof console !== "undefined" && console.log) {
         try {
           console.log("[SDK] About to create Program with idlWithMetadata:", {
             hasMetadata: !!idlWithMetadata.metadata,
             metadataAddress: idlWithMetadata.metadata?.address,
             metadataAddressType: typeof idlWithMetadata.metadata?.address,
-            programId: freshProgramId.toString(),
-            programIdMatches: idlWithMetadata.metadata?.address === freshProgramId.toString()
+            programId: ultraFreshProgramId.toString(),
+            programIdMatches: idlWithMetadata.metadata?.address === ultraFreshProgramId.toString(),
+            programIdHasBn: "_bn" in ultraFreshProgramIdWithBn
           });
         } catch {
         }
       }
-      program = new Program(idlWithMetadata, freshProgramId, provider);
+      program = new Program(idlWithMetadata, ultraFreshProgramId, provider);
     } catch (programErr) {
       let idlWithMetadata;
       try {

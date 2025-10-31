@@ -827,6 +827,35 @@ export async function buildSwapIxWithAnchor(
         throw new Error(`IDL metadata.address is invalid: ${err.message}`);
       }
       
+      // CRITICAL: Anchor's Program constructor may check if programId is undefined/null
+      // and if so, it will use idl.metadata.address. However, even when programId is
+      // provided, Anchor might still call translateAddress on idl.metadata.address
+      // as a validation step. We need to ensure programId is NEVER undefined/null.
+      //
+      // However, there's another possibility: Anchor might be calling translateAddress
+      // on a value that becomes undefined during the constructor execution. This could
+      // happen if Anchor accesses a property that doesn't exist or becomes undefined.
+      //
+      // To debug this, let's ensure programId is a fresh PublicKey instance right
+      // before passing it to Program constructor, and log what we're actually passing.
+      
+      // Final check: ensure programId is not undefined/null immediately before Program call
+      if (freshProgramId === undefined || freshProgramId === null) {
+        throw new Error('freshProgramId became undefined/null immediately before Program constructor call');
+      }
+      
+      // Ensure programId is still a PublicKey instance
+      if (!(freshProgramId instanceof PublicKey)) {
+        throw new Error('freshProgramId is not a PublicKey instance immediately before Program constructor call');
+      }
+      
+      // Create a completely fresh programId to ensure no serialization issues
+      const ultraFreshProgramId = new PublicKey(freshProgramId.toString());
+      const ultraFreshProgramIdWithBn = ultraFreshProgramId as any;
+      if (!("_bn" in ultraFreshProgramIdWithBn) || ultraFreshProgramIdWithBn._bn === undefined) {
+        throw new Error('Failed to create ultra-fresh programId with _bn property');
+      }
+      
       // Now create Program with IDL that has metadata.address set
       // This ensures Anchor has a fallback if programId is somehow undefined
       
@@ -837,15 +866,17 @@ export async function buildSwapIxWithAnchor(
             hasMetadata: !!idlWithMetadata.metadata,
             metadataAddress: idlWithMetadata.metadata?.address,
             metadataAddressType: typeof idlWithMetadata.metadata?.address,
-            programId: freshProgramId.toString(),
-            programIdMatches: idlWithMetadata.metadata?.address === freshProgramId.toString(),
+            programId: ultraFreshProgramId.toString(),
+            programIdMatches: idlWithMetadata.metadata?.address === ultraFreshProgramId.toString(),
+            programIdHasBn: "_bn" in ultraFreshProgramIdWithBn,
           });
         } catch {
           // Ignore logging errors
         }
       }
       
-      program = new Program(idlWithMetadata, freshProgramId, provider);
+      // Use ultra-fresh programId to ensure no serialization issues
+      program = new Program(idlWithMetadata, ultraFreshProgramId, provider);
     } catch (programErr: any) {
       // If error occurs, log detailed information about what was passed
       // Note: idlWithMetadata may not be defined if error occurred before its creation
