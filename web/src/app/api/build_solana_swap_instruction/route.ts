@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { PublicKey } from "@solana/web3.js";
+import { PublicKey, Connection, Keypair } from "@solana/web3.js";
 import { buildSwapIxWithAnchor } from "dex-ai-sdk";
 import { validateSwapInstructionRequest } from "@/utils/validation";
 import { ApiError, ValidationError } from "@/types";
@@ -137,11 +137,34 @@ export async function POST(req: NextRequest) {
       minAmountOut: validatedParams.minAmountOut,
     };
 
+    // Create a dummy wallet for instruction building (we only need the instruction, not actual signing)
+    // In serverless environments, we can't use AnchorProvider.local() which requires ANCHOR_WALLET
+    const dummyWallet = Keypair.generate();
+    const connection = new Connection(
+      process.env.NEXT_PUBLIC_SOLANA_RPC_URL || "https://api.devnet.solana.com",
+      "confirmed"
+    );
+    
+    // Create AnchorProvider with dummy wallet (instruction building doesn't require real wallet)
+    const provider = new anchor.AnchorProvider(
+      connection,
+      {
+        publicKey: dummyWallet.publicKey,
+        signTransaction: async (tx) => tx,
+        signAllTransactions: async (txs) => txs,
+      },
+      { commitment: "confirmed" }
+    );
+
     // Use buildSwapIxWithAnchor which requires Anchor
     const anchorExports = {
       BN: anchor.BN,
       Program: anchor.Program,
-      AnchorProvider: anchor.AnchorProvider,
+      AnchorProvider: {
+        // Override local() to return our custom provider
+        local: () => provider,
+        env: () => provider,
+      },
     };
     
     const ix = await buildSwapIxWithAnchor(anchorExports, params);
