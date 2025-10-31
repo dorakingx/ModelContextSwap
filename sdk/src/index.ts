@@ -259,7 +259,7 @@ export async function buildSwapIxWithAnchor(
     }
 
     // All accounts are already validated by assertPubkey above
-    // Verify they have _bn property (required by Anchor)
+    // Double-check all accounts are defined and have _bn property before passing to Anchor
     const accounts = {
       user,
       userSource,
@@ -270,13 +270,50 @@ export async function buildSwapIxWithAnchor(
       tokenProgram,
     };
 
+    // Comprehensive validation before passing to Anchor
     for (const [name, value] of Object.entries(accounts)) {
+      // Check if account is undefined or null
+      if (value === undefined) {
+        throw new Error(`Account parameter '${name}' is undefined`);
+      }
+      if (value === null) {
+        throw new Error(`Account parameter '${name}' is null`);
+      }
+      
+      // Check if it's a PublicKey instance
+      if (!(value instanceof PublicKey)) {
+        throw new Error(
+          `Account parameter '${name}' is not a PublicKey instance. Got: ${typeof value}, value: ${value}`
+        );
+      }
+      
+      // Verify PublicKey has _bn property (required by Anchor for validation)
       if (!("_bn" in value)) {
-        throw new Error(`Account parameter '${name}' PublicKey is missing _bn property`);
+        throw new Error(
+          `Account parameter '${name}' PublicKey is missing _bn property. PublicKey: ${value.toString()}`
+        );
+      }
+      
+      // Additional safety check: ensure _bn is not undefined
+      if (value._bn === undefined) {
+        throw new Error(
+          `Account parameter '${name}' PublicKey has _bn property but it's undefined. PublicKey: ${value.toString()}`
+        );
       }
     }
 
-    const accountsBuilder = swapMethod.accounts(accounts);
+    // Create a new accounts object with only validated PublicKeys to ensure no undefined values
+    const validatedAccounts = {
+      user: accounts.user!,
+      userSource: accounts.userSource!,
+      userDestination: accounts.userDestination!,
+      pool: accounts.pool!,
+      vaultA: accounts.vaultA!,
+      vaultB: accounts.vaultB!,
+      tokenProgram: accounts.tokenProgram!,
+    };
+
+    const accountsBuilder = swapMethod.accounts(validatedAccounts);
 
     if (!accountsBuilder) {
       throw new Error("swapMethod.accounts() returned undefined");

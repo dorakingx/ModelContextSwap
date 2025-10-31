@@ -230,11 +230,38 @@ async function buildSwapIxWithAnchor(anchor, params, options) {
       tokenProgram
     };
     for (const [name, value] of Object.entries(accounts)) {
+      if (value === void 0) {
+        throw new Error(`Account parameter '${name}' is undefined`);
+      }
+      if (value === null) {
+        throw new Error(`Account parameter '${name}' is null`);
+      }
+      if (!(value instanceof import_web3.PublicKey)) {
+        throw new Error(
+          `Account parameter '${name}' is not a PublicKey instance. Got: ${typeof value}, value: ${value}`
+        );
+      }
       if (!("_bn" in value)) {
-        throw new Error(`Account parameter '${name}' PublicKey is missing _bn property`);
+        throw new Error(
+          `Account parameter '${name}' PublicKey is missing _bn property. PublicKey: ${value.toString()}`
+        );
+      }
+      if (value._bn === void 0) {
+        throw new Error(
+          `Account parameter '${name}' PublicKey has _bn property but it's undefined. PublicKey: ${value.toString()}`
+        );
       }
     }
-    const accountsBuilder = swapMethod.accounts(accounts);
+    const validatedAccounts = {
+      user: accounts.user,
+      userSource: accounts.userSource,
+      userDestination: accounts.userDestination,
+      pool: accounts.pool,
+      vaultA: accounts.vaultA,
+      vaultB: accounts.vaultB,
+      tokenProgram: accounts.tokenProgram
+    };
+    const accountsBuilder = swapMethod.accounts(validatedAccounts);
     if (!accountsBuilder) {
       throw new Error("swapMethod.accounts() returned undefined");
     }

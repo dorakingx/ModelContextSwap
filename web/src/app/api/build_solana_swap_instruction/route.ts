@@ -88,22 +88,42 @@ export async function POST(req: NextRequest) {
     }
 
     // Verify all PublicKeys have _bn property (required by Anchor)
+    // Comprehensive validation to prevent undefined errors
     const publicKeys = { programId, pool, user, userSource, userDestination, vaultA, vaultB, tokenProgram };
     for (const [name, value] of Object.entries(publicKeys)) {
+      if (value === undefined) {
+        throw new ValidationError(`PublicKey '${name}' is undefined after creation`, name);
+      }
+      if (value === null) {
+        throw new ValidationError(`PublicKey '${name}' is null after creation`, name);
+      }
+      if (!(value instanceof PublicKey)) {
+        throw new ValidationError(
+          `'${name}' is not a PublicKey instance after creation (got: ${typeof value})`,
+          name
+        );
+      }
       if (!("_bn" in value)) {
         throw new ValidationError(`PublicKey '${name}' is missing _bn property`, name);
       }
+      if (value._bn === undefined) {
+        throw new ValidationError(
+          `PublicKey '${name}' has _bn property but it's undefined. PublicKey: ${value.toString()}`,
+          name
+        );
+      }
     }
 
+    // Create params object with validated PublicKeys (non-null assertion safe after validation)
     const params = {
-      programId,
-      pool,
-      user,
-      userSource,
-      userDestination,
-      vaultA,
-      vaultB,
-      tokenProgram,
+      programId: publicKeys.programId!,
+      pool: publicKeys.pool!,
+      user: publicKeys.user!,
+      userSource: publicKeys.userSource!,
+      userDestination: publicKeys.userDestination!,
+      vaultA: publicKeys.vaultA!,
+      vaultB: publicKeys.vaultB!,
+      tokenProgram: publicKeys.tokenProgram!,
       amountIn: validatedParams.amountIn,
       minAmountOut: validatedParams.minAmountOut,
     };
