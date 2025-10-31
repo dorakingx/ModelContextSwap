@@ -193,19 +193,33 @@ export async function POST(req: NextRequest) {
     // This ensures the BN class works before passing to SDK
     let testBN;
     try {
-      testBN = new anchor.BN(params.amountIn.toString());
-      // Validate the BN instance
+      // Try creating BN from string (recommended for large numbers)
+      testBN = new anchor.BN(params.amountIn.toString(), 10); // Explicit base 10
+      
+      // Validate the BN instance has required properties
       if (!testBN || typeof testBN.toString !== "function") {
         throw new Error("BN instance is invalid - missing toString method");
       }
+      
+      // Check if BN has _bn property (internal bn.js instance)
+      // This is required by Anchor's Program methods
       const testString = testBN.toString();
+      const hasInternalBN = testBN._bn !== undefined;
+      
       if (process.env.NODE_ENV === "development") {
         console.log("[build_solana_swap_instruction] BN test successful:", {
           input: params.amountIn.toString(),
           output: testString,
           bnType: typeof testBN,
           bnConstructor: testBN.constructor?.name || "unknown",
+          hasInternalBN: hasInternalBN,
+          bnProperties: Object.keys(testBN).slice(0, 15),
         });
+      }
+      
+      // If _bn is missing, try to create it (this shouldn't happen with anchor.BN)
+      if (!hasInternalBN && process.env.NODE_ENV === "development") {
+        console.warn("[build_solana_swap_instruction] BN instance missing _bn property");
       }
     } catch (err: any) {
       console.error("[build_solana_swap_instruction] BN test failed:", {

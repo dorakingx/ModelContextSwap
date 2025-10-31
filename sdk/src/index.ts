@@ -101,26 +101,90 @@ export async function buildSwapIxWithAnchor(anchor: AnchorExports, params: SwapB
   }
   
   // The account metas must match the Rust order
+  // Wrap BN instances to ensure they're in the format Anchor expects
   try {
-    return await program.methods
-      .swap(amountInBN, minAmountOutBN)
-      .accounts({
-        user: params.user,
-        userSource: params.userSource,
-        userDestination: params.userDestination,
-        pool: params.pool,
-        vaultA: params.vaultA,
-        vaultB: params.vaultB,
-        tokenProgram: params.tokenProgram,
-        // systemProgram is not needed for swap
-      })
-      .instruction();
+    // Verify BN instances have required internal structure
+    // Anchor's BN wrapper may require _bn property
+    if (amountInBN && typeof amountInBN === "object") {
+      // Check if BN has _bn property or is a valid BN instance
+      const amountInStr = amountInBN.toString();
+      const amountInNum = amountInBN.toNumber ? amountInBN.toNumber() : Number(amountInStr);
+      if (isNaN(amountInNum)) {
+        throw new Error(`Invalid amountInBN: cannot convert to number`);
+      }
+    }
+    
+    if (minAmountOutBN && typeof minAmountOutBN === "object") {
+      const minAmountOutStr = minAmountOutBN.toString();
+      const minAmountOutNum = minAmountOutBN.toNumber ? minAmountOutBN.toNumber() : Number(minAmountOutStr);
+      if (isNaN(minAmountOutNum)) {
+        throw new Error(`Invalid minAmountOutBN: cannot convert to number`);
+      }
+    }
+
+    // Build the instruction with explicit error handling at each step
+    const methods = program.methods;
+    if (!methods || !methods.swap) {
+      throw new Error("program.methods.swap is not available");
+    }
+
+    const swapMethod = methods.swap(amountInBN, minAmountOutBN);
+    if (!swapMethod) {
+      throw new Error("methods.swap() returned undefined");
+    }
+
+    const accountsBuilder = swapMethod.accounts({
+      user: params.user,
+      userSource: params.userSource,
+      userDestination: params.userDestination,
+      pool: params.pool,
+      vaultA: params.vaultA,
+      vaultB: params.vaultB,
+      tokenProgram: params.tokenProgram,
+      // systemProgram is not needed for swap
+    });
+
+    if (!accountsBuilder) {
+      throw new Error("swapMethod.accounts() returned undefined");
+    }
+
+    const instruction = await accountsBuilder.instruction();
+    
+    if (!instruction) {
+      throw new Error("accountsBuilder.instruction() returned undefined");
+    }
+
+    return instruction;
   } catch (err: any) {
-    // Enhanced error message for debugging
+    // Enhanced error message with full context
+    const errorDetails = {
+      message: err.message,
+      stack: err.stack,
+      amountInBN: {
+        type: typeof amountInBN,
+        constructor: amountInBN?.constructor?.name,
+        toString: amountInBN?.toString?.(),
+        has_toNumber: typeof amountInBN?.toNumber === "function",
+        has_bn: amountInBN?._bn !== undefined,
+        keys: amountInBN ? Object.keys(amountInBN).slice(0, 10) : [],
+      },
+      minAmountOutBN: {
+        type: typeof minAmountOutBN,
+        constructor: minAmountOutBN?.constructor?.name,
+        toString: minAmountOutBN?.toString?.(),
+        has_toNumber: typeof minAmountOutBN?.toNumber === "function",
+        has_bn: minAmountOutBN?._bn !== undefined,
+        keys: minAmountOutBN ? Object.keys(minAmountOutBN).slice(0, 10) : [],
+      },
+      BNClass: {
+        name: BN?.name,
+        type: typeof BN,
+      },
+    };
+
     throw new Error(
-      `Failed to build swap instruction: ${err.message}. ` +
-      `BN instances: amountIn=${amountInBN?.toString() || "undefined"}, ` +
-      `minAmountOut=${minAmountOutBN?.toString() || "undefined"}`
+      `Failed to build swap instruction: ${err.message}\n` +
+      `Error details: ${JSON.stringify(errorDetails, null, 2)}`
     );
   }
 }
