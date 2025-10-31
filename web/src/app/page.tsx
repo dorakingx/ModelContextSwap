@@ -12,8 +12,9 @@ import { getTokenIconStyle } from "@/utils/tokenIcons";
 
 export default function Home() {
   const [amountIn, setAmountIn] = useState("");
-  const [reserveIn, setReserveIn] = useState("");
-  const [reserveOut, setReserveOut] = useState("");
+  // Default reserve values (in smallest units)
+  const [reserveIn, setReserveIn] = useState("1000000000000"); // 1000 SOL (9 decimals)
+  const [reserveOut, setReserveOut] = useState("1000000000000"); // 1000 USDC (6 decimals)
   const [feeBps, setFeeBps] = useState("30");
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [tokenFrom, setTokenFrom] = useState<Token | null>(POPULAR_TOKENS[0]); // SOL by default
@@ -59,6 +60,19 @@ export default function Home() {
     }
   }, []);
 
+  // Convert user input amount to token's smallest unit (considering decimals)
+  const convertToSmallestUnit = useCallback((amount: string, decimals: number): string => {
+    try {
+      const num = parseFloat(amount);
+      if (isNaN(num)) return amount;
+      const multiplier = BigInt(10 ** decimals);
+      const amountBigInt = BigInt(Math.floor(num * (10 ** decimals)));
+      return amountBigInt.toString();
+    } catch {
+      return amount;
+    }
+  }, []);
+
   // Auto-calculate quote function (doesn't reset quote on error)
   const autoCalculateQuote = useCallback(async (params: { amountIn: string; reserveIn: string; reserveOut: string; feeBps: string }) => {
     try {
@@ -79,7 +93,6 @@ export default function Home() {
       }
     } catch (err) {
       // Silently fail for auto-calculation
-      console.error("Auto-calculation error:", err);
       return null;
     }
   }, []);
@@ -87,6 +100,7 @@ export default function Home() {
   // Auto-calculate quote when amount changes
   useEffect(() => {
     const timeoutId = setTimeout(async () => {
+      // Check if all required fields are filled
       if (!amountIn.trim() || !reserveIn.trim() || !reserveOut.trim() || !feeBps.trim()) {
         setAutoQuoteAmount(null);
         setIsAutoCalculating(false);
@@ -105,17 +119,28 @@ export default function Home() {
           return;
         }
 
+        // Convert amountIn to smallest unit if tokenFrom is selected
+        let amountInConverted = amountIn;
+        if (tokenFrom) {
+          amountInConverted = convertToSmallestUnit(amountIn, tokenFrom.decimals);
+        }
+
         setIsAutoCalculating(true);
-        await autoCalculateQuote({ amountIn, reserveIn, reserveOut, feeBps });
-    } catch (err) {
+        await autoCalculateQuote({ 
+          amountIn: amountInConverted, 
+          reserveIn, 
+          reserveOut, 
+          feeBps 
+        });
+      } catch (err) {
         setAutoQuoteAmount(null);
-    } finally {
+      } finally {
         setIsAutoCalculating(false);
       }
     }, 500); // Debounce 500ms
 
     return () => clearTimeout(timeoutId);
-  }, [amountIn, reserveIn, reserveOut, feeBps, autoCalculateQuote]);
+  }, [amountIn, reserveIn, reserveOut, feeBps, autoCalculateQuote, tokenFrom, convertToSmallestUnit]);
 
   // Update auto quote amount when quote changes (from manual quote fetch)
   useEffect(() => {
@@ -140,7 +165,13 @@ export default function Home() {
       return;
     }
 
-    await getQuote({ amountIn, reserveIn, reserveOut, feeBps });
+    // Convert amountIn to smallest unit if tokenFrom is selected
+    let amountInConverted = amountIn;
+    if (tokenFrom) {
+      amountInConverted = convertToSmallestUnit(amountIn, tokenFrom.decimals);
+    }
+
+    await getQuote({ amountIn: amountInConverted, reserveIn, reserveOut, feeBps });
   };
 
   const handleBuildInstruction = async (e: React.FormEvent) => {
@@ -326,12 +357,12 @@ export default function Home() {
                 borderRadius: "16px",
                 border: "1px solid var(--border-default)"
               }}>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1rem" }}>
                   <div className="input-group" style={{ marginBottom: 0 }}>
                     <label className="input-label" style={{ fontSize: "0.85rem" }}>Reserve In</label>
                     <input
                       className="input-field"
-                      placeholder="1000000000"
+                      placeholder="1000000000000"
                       value={reserveIn}
                       onChange={e => {
                         setReserveIn(e.target.value);
@@ -349,6 +380,31 @@ export default function Home() {
                     {formErrors.reserveIn && (
                       <div id="reserveIn-error" style={{ color: "var(--error)", fontSize: "0.75rem", marginTop: "0.25rem" }}>
                         {formErrors.reserveIn}
+                      </div>
+                    )}
+                  </div>
+                  <div className="input-group" style={{ marginBottom: 0 }}>
+                    <label className="input-label" style={{ fontSize: "0.85rem" }}>Reserve Out</label>
+                    <input
+                      className="input-field"
+                      placeholder="1000000000000"
+                      value={reserveOut}
+                      onChange={e => {
+                        setReserveOut(e.target.value);
+                        if (formErrors.reserveOut) {
+                          setFormErrors(prev => {
+                            const newErrors = { ...prev };
+                            delete newErrors.reserveOut;
+                            return newErrors;
+                          });
+                        }
+                      }}
+                      aria-invalid={!!formErrors.reserveOut}
+                      aria-describedby={formErrors.reserveOut ? "reserveOut-error" : undefined}
+                    />
+                    {formErrors.reserveOut && (
+                      <div id="reserveOut-error" style={{ color: "var(--error)", fontSize: "0.75rem", marginTop: "0.25rem" }}>
+                        {formErrors.reserveOut}
                       </div>
                     )}
                   </div>
