@@ -6,6 +6,8 @@ import { useDexApi } from "@/hooks/useDexApi";
 import { useMcpServer } from "@/hooks/useMcpServer";
 import { SwapParams, SwapInstructionRequest } from "@/types";
 import { formatLargeNumber } from "@/utils/validation";
+import { TokenSelector } from "@/components/TokenSelector";
+import { Token, POPULAR_TOKENS } from "@/utils/tokens";
 
 export default function Home() {
   const [amountIn, setAmountIn] = useState("");
@@ -13,6 +15,8 @@ export default function Home() {
   const [reserveOut, setReserveOut] = useState("");
   const [feeBps, setFeeBps] = useState("30");
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [tokenFrom, setTokenFrom] = useState<Token | null>(POPULAR_TOKENS[0]); // SOL by default
+  const [tokenTo, setTokenTo] = useState<Token | null>(POPULAR_TOKENS[1]); // USDC by default
 
   const { 
     getQuote, 
@@ -135,9 +139,11 @@ export default function Home() {
                     aria-invalid={!!formErrors.amountIn}
                     aria-describedby={formErrors.amountIn ? "amountIn-error" : undefined}
                   />
-                  <div className="token-info">
-                    <span>Amount In</span>
-                  </div>
+                  <TokenSelector
+                    selectedToken={tokenFrom}
+                    onSelect={setTokenFrom}
+                    label="Select token to pay"
+                  />
                 </div>
                 {formErrors.amountIn && (
                   <div id="amountIn-error" style={{ color: "var(--error)", fontSize: "0.85rem", marginTop: "0.5rem" }}>
@@ -147,7 +153,17 @@ export default function Home() {
               </div>
 
               <div style={{ display: "flex", justifyContent: "center", margin: "0.5rem 0" }}>
-                <div className="swap-arrow" onClick={() => {}} role="button" aria-label="Swap direction" tabIndex={0}>
+                <div 
+                  className="swap-arrow" 
+                  onClick={() => {
+                    const temp = tokenFrom;
+                    setTokenFrom(tokenTo);
+                    setTokenTo(temp);
+                  }} 
+                  role="button" 
+                  aria-label="Swap direction" 
+                  tabIndex={0}
+                >
                   <svg viewBox="0 0 24 24" fill="none">
                     <path d="M7 10L12 15L17 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
@@ -182,9 +198,11 @@ export default function Home() {
                     aria-invalid={!!formErrors.reserveOut}
                     aria-describedby={formErrors.reserveOut ? "reserveOut-error" : undefined}
                   />
-                  <div className="token-info">
-                    <span>Reserve Out</span>
-                  </div>
+                  <TokenSelector
+                    selectedToken={tokenTo}
+                    onSelect={setTokenTo}
+                    label="Select token to receive"
+                  />
                 </div>
                 {formErrors.reserveOut && (
                   <div id="reserveOut-error" style={{ color: "var(--error)", fontSize: "0.85rem", marginTop: "0.5rem" }}>
@@ -293,17 +311,24 @@ export default function Home() {
                   </div>
                   <div style={{ 
                     display: "flex", 
-                    justifyContent: "space-between", 
-                    alignItems: "center",
+                    flexDirection: "column",
+                    gap: "0.5rem",
                     padding: "1rem",
                     background: "var(--bg-light)",
                     borderRadius: "12px",
                     border: "1px solid var(--border-default)"
                   }}>
-                    <span style={{ fontWeight: 600, color: "var(--text-secondary)" }}>Output Amount:</span>
-                    <span style={{ fontWeight: 700, fontSize: "1.25rem", color: "var(--success)" }}>
-                      {formatLargeNumber(quote.amountOut)}
-                    </span>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontWeight: 600, color: "var(--text-secondary)", fontSize: "0.9rem" }}>
+                        {tokenFrom?.symbol} → {tokenTo?.symbol}
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontWeight: 600, color: "var(--text-secondary)" }}>Output Amount:</span>
+                      <span style={{ fontWeight: 700, fontSize: "1.25rem", color: "var(--success)" }}>
+                        {formatLargeNumber(quote.amountOut)} {tokenTo?.symbol}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
