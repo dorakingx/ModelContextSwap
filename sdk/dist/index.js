@@ -558,7 +558,23 @@ async function buildSwapIxWithAnchor(anchor, params, options) {
           }
         }
       }
-      program = new Program(finalIdl, freshProgramId, provider);
+      const idlWithMetadata = {
+        ...finalIdl,
+        metadata: {
+          ...finalIdl.metadata,
+          address: freshProgramId.toString()
+        }
+      };
+      try {
+        const testMetaAddress = new PublicKey(idlWithMetadata.metadata.address);
+        const testMetaAddressWithBn = testMetaAddress;
+        if (!("_bn" in testMetaAddressWithBn) || testMetaAddressWithBn._bn === void 0) {
+          throw new Error("metadata.address PublicKey is missing _bn property");
+        }
+      } catch (err) {
+        throw new Error(`IDL metadata.address is invalid: ${err.message}`);
+      }
+      program = new Program(idlWithMetadata, freshProgramId, provider);
     } catch (programErr) {
       const debugInfo = {
         finalIdlType: typeof finalIdl,

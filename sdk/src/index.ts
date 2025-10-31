@@ -800,7 +800,36 @@ export async function buildSwapIxWithAnchor(
         }
       }
       
-      program = new Program(finalIdl, freshProgramId, provider);
+      // CRITICAL FIX: Some Anchor versions may pass undefined to translateAddress
+      // even when programId is provided. To work around this, we'll ensure
+      // the IDL has metadata.address set to the programId string, which Anchor
+      // will use as a fallback if programId is somehow undefined.
+      //
+      // However, we've been removing metadata.address, which might cause issues.
+      // Let's try a different approach: ensure metadata.address exists but
+      // matches programId, so Anchor doesn't get confused.
+      const idlWithMetadata = {
+        ...finalIdl,
+        metadata: {
+          ...finalIdl.metadata,
+          address: freshProgramId.toString(),
+        },
+      };
+      
+      // Ensure metadata.address is a valid PublicKey string
+      try {
+        const testMetaAddress = new PublicKey(idlWithMetadata.metadata.address);
+        const testMetaAddressWithBn = testMetaAddress as any;
+        if (!("_bn" in testMetaAddressWithBn) || testMetaAddressWithBn._bn === undefined) {
+          throw new Error("metadata.address PublicKey is missing _bn property");
+        }
+      } catch (err: any) {
+        throw new Error(`IDL metadata.address is invalid: ${err.message}`);
+      }
+      
+      // Now create Program with IDL that has metadata.address set
+      // This ensures Anchor has a fallback if programId is somehow undefined
+      program = new Program(idlWithMetadata, freshProgramId, provider);
     } catch (programErr: any) {
       // If error occurs, log detailed information about what was passed
       const debugInfo = {
