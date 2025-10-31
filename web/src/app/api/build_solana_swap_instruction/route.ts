@@ -124,6 +124,11 @@ export async function POST(req: NextRequest) {
       throw new ValidationError(`Invalid tokenProgram: ${validatedParams.tokenProgram}`, "tokenProgram");
     }
 
+    // Validate amount values before creating params
+    if (validatedParams.amountIn === undefined || validatedParams.minAmountOut === undefined) {
+      throw new ValidationError("amountIn and minAmountOut must be provided", "amount");
+    }
+
     const params = {
       programId,
       pool,
@@ -136,6 +141,16 @@ export async function POST(req: NextRequest) {
       amountIn: validatedParams.amountIn,
       minAmountOut: validatedParams.minAmountOut,
     };
+
+    // Debug: log params to ensure they're valid
+    if (process.env.NODE_ENV === "development") {
+      console.log("[build_solana_swap_instruction] Params:", {
+        amountIn: params.amountIn.toString(),
+        minAmountOut: params.minAmountOut.toString(),
+        amountInType: typeof params.amountIn,
+        minAmountOutType: typeof params.minAmountOut,
+      });
+    }
 
     // Create a dummy wallet for instruction building (we only need the instruction, not actual signing)
     // In serverless environments, we can't use AnchorProvider.local() which requires ANCHOR_WALLET
@@ -157,8 +172,9 @@ export async function POST(req: NextRequest) {
     );
 
     // Use buildSwapIxWithAnchor which requires Anchor
+    // Ensure BN is properly imported and can be instantiated
     const anchorExports = {
-      BN: anchor.BN,
+      BN: anchor.BN || (anchor as any).default?.BN || anchor,
       Program: anchor.Program,
       AnchorProvider: {
         // Override local() to return our custom provider
@@ -166,6 +182,21 @@ export async function POST(req: NextRequest) {
         env: () => provider,
       },
     };
+    
+    // Validate BN before use
+    if (!anchorExports.BN) {
+      throw new Error("Anchor BN class is not available");
+    }
+    
+    // Test BN creation to ensure it works
+    try {
+      const testBN = new anchorExports.BN("0");
+      if (process.env.NODE_ENV === "development") {
+        console.log("[build_solana_swap_instruction] BN test successful:", testBN.toString());
+      }
+    } catch (err: any) {
+      throw new Error(`BN initialization failed: ${err.message}`);
+    }
     
     const ix = await buildSwapIxWithAnchor(anchorExports, params);
 

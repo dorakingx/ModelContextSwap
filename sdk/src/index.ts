@@ -49,9 +49,26 @@ export async function buildSwapIxWithAnchor(anchor: AnchorExports, params: SwapB
   const provider = AnchorProvider.local();
   const program = new Program(idl as any, params.programId, provider);
   
+  // Ensure amountIn and minAmountOut are valid bigints
+  if (!params.amountIn || !params.minAmountOut) {
+    throw new Error("amountIn and minAmountOut must be provided");
+  }
+
+  // Convert bigint to string before creating BN
+  const amountInStr = typeof params.amountIn === "bigint" 
+    ? params.amountIn.toString() 
+    : String(params.amountIn);
+  const minAmountOutStr = typeof params.minAmountOut === "bigint"
+    ? params.minAmountOut.toString()
+    : String(params.minAmountOut);
+
+  // Create BN instances
+  const amountInBN = new BN(amountInStr);
+  const minAmountOutBN = new BN(minAmountOutStr);
+  
   // The account metas must match the Rust order
   return await program.methods
-    .swap(new BN(params.amountIn.toString()), new BN(params.minAmountOut.toString()))
+    .swap(amountInBN, minAmountOutBN)
     .accounts({
       user: params.user,
       userSource: params.userSource,
