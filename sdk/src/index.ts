@@ -608,7 +608,62 @@ export async function buildSwapIxWithAnchor(
     // Use sanitized IDL WITHOUT metadata.address to prevent _bn errors
     // Anchor's Program constructor will use the programId parameter instead
     // The constructor signature is: new Program(idl, programId, provider)
-    program = new Program(finalIdl, freshProgramId, provider);
+    // 
+    // IMPORTANT: Some Anchor versions may check if programId is undefined/null
+    // and fall back to metadata.address. Since we removed metadata.address,
+    // we must ensure programId is never undefined/null.
+    //
+    // Additionally, Anchor may call translateAddress on programId itself,
+    // so we ensure it's a valid PublicKey instance with _bn property.
+    
+    // Double-check programId is not undefined/null right before calling Program constructor
+    if (freshProgramId === undefined || freshProgramId === null) {
+      throw new Error('freshProgramId is undefined/null immediately before Program constructor call');
+    }
+    
+    // Ensure programId is still a PublicKey instance
+    if (!(freshProgramId instanceof PublicKey)) {
+      throw new Error('freshProgramId is not a PublicKey instance immediately before Program constructor call');
+    }
+    
+    // Ensure programId still has _bn property
+    const immediateProgramIdWithBn = freshProgramId as any;
+    if (!("_bn" in immediateProgramIdWithBn) || immediateProgramIdWithBn._bn === undefined) {
+      throw new Error('freshProgramId lost _bn property immediately before Program constructor call');
+    }
+    
+    // Wrap Program constructor call in try-catch to catch any immediate errors
+    try {
+      program = new Program(finalIdl, freshProgramId, provider);
+    } catch (programErr: any) {
+      // If error occurs, log detailed information about what was passed
+      const debugInfo = {
+        finalIdlType: typeof finalIdl,
+        finalIdlKeys: finalIdl ? Object.keys(finalIdl) : [],
+        finalIdlHasMetadata: !!finalIdl?.metadata,
+        finalIdlMetadataKeys: finalIdl?.metadata ? Object.keys(finalIdl.metadata) : [],
+        programIdType: typeof freshProgramId,
+        programIdInstanceof: freshProgramId instanceof PublicKey,
+        programIdToString: freshProgramId?.toString(),
+        programIdHasBn: immediateProgramIdWithBn ? ("_bn" in immediateProgramIdWithBn) : false,
+        providerType: typeof provider,
+        providerKeys: provider ? Object.keys(provider).slice(0, 10) : [],
+        providerHasConnection: !!provider?.connection,
+        providerHasWallet: !!provider?.wallet,
+        providerWalletHasPubkey: !!provider?.wallet?.publicKey,
+      };
+      
+      if (typeof console !== 'undefined' && console.error) {
+        try {
+          console.error('[SDK] Program constructor failed with debug info:', JSON.stringify(debugInfo, null, 2));
+        } catch {
+          // Ignore logging errors
+        }
+      }
+      
+      // Re-throw with enhanced error message
+      throw new Error(`Program constructor failed: ${programErr.message}. Debug info: ${JSON.stringify(debugInfo)}`);
+    }
   } catch (err: any) {
     // Enhanced error message for Program creation failures
     const idlMetadata = sanitizedIdl?.metadata || (idl as any).metadata;

@@ -456,7 +456,42 @@ async function buildSwapIxWithAnchor(anchor, params, options) {
       } catch {
       }
     }
-    program = new Program(finalIdl, freshProgramId, provider);
+    if (freshProgramId === void 0 || freshProgramId === null) {
+      throw new Error("freshProgramId is undefined/null immediately before Program constructor call");
+    }
+    if (!(freshProgramId instanceof import_web3.PublicKey)) {
+      throw new Error("freshProgramId is not a PublicKey instance immediately before Program constructor call");
+    }
+    const immediateProgramIdWithBn = freshProgramId;
+    if (!("_bn" in immediateProgramIdWithBn) || immediateProgramIdWithBn._bn === void 0) {
+      throw new Error("freshProgramId lost _bn property immediately before Program constructor call");
+    }
+    try {
+      program = new Program(finalIdl, freshProgramId, provider);
+    } catch (programErr) {
+      const debugInfo = {
+        finalIdlType: typeof finalIdl,
+        finalIdlKeys: finalIdl ? Object.keys(finalIdl) : [],
+        finalIdlHasMetadata: !!finalIdl?.metadata,
+        finalIdlMetadataKeys: finalIdl?.metadata ? Object.keys(finalIdl.metadata) : [],
+        programIdType: typeof freshProgramId,
+        programIdInstanceof: freshProgramId instanceof import_web3.PublicKey,
+        programIdToString: freshProgramId?.toString(),
+        programIdHasBn: immediateProgramIdWithBn ? "_bn" in immediateProgramIdWithBn : false,
+        providerType: typeof provider,
+        providerKeys: provider ? Object.keys(provider).slice(0, 10) : [],
+        providerHasConnection: !!provider?.connection,
+        providerHasWallet: !!provider?.wallet,
+        providerWalletHasPubkey: !!provider?.wallet?.publicKey
+      };
+      if (typeof console !== "undefined" && console.error) {
+        try {
+          console.error("[SDK] Program constructor failed with debug info:", JSON.stringify(debugInfo, null, 2));
+        } catch {
+        }
+      }
+      throw new Error(`Program constructor failed: ${programErr.message}. Debug info: ${JSON.stringify(debugInfo)}`);
+    }
   } catch (err) {
     const idlMetadata = sanitizedIdl?.metadata || dex_ai_default.metadata;
     const errorMsg = [
