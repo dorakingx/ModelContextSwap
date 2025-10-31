@@ -524,8 +524,8 @@ export async function buildSwapIxWithAnchor(
     }
     
     // Ensure finalIdl has no undefined/null values
-    const finalIdlString = JSON.stringify(finalIdl);
-    if (finalIdlString.includes('undefined') || finalIdlString.includes('null')) {
+    const finalIdlStringCheck = JSON.stringify(finalIdl);
+    if (finalIdlStringCheck.includes('undefined') || finalIdlStringCheck.includes('null')) {
       throw new Error('Final IDL still contains undefined/null values after JSON serialization');
     }
     

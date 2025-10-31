@@ -365,7 +365,17 @@ async function buildSwapIxWithAnchor(anchor, params, options) {
       } catch {
       }
     }
-    program = new Program(sanitizedIdl, freshProgramId, provider);
+    const finalIdl = JSON.parse(JSON.stringify(sanitizedIdl));
+    if (!finalIdl.metadata || !finalIdl.metadata.address) {
+      finalIdl.metadata = { address: freshProgramId.toString() };
+    } else {
+      finalIdl.metadata.address = freshProgramId.toString();
+    }
+    const finalIdlStringCheck = JSON.stringify(finalIdl);
+    if (finalIdlStringCheck.includes("undefined") || finalIdlStringCheck.includes("null")) {
+      throw new Error("Final IDL still contains undefined/null values after JSON serialization");
+    }
+    program = new Program(finalIdl, freshProgramId, provider);
   } catch (err) {
     const idlMetadata = sanitizedIdl?.metadata || dex_ai_default.metadata;
     const errorMsg = [
