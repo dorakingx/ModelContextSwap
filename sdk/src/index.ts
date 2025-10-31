@@ -384,57 +384,26 @@ export async function buildSwapIxWithAnchor(
       );
     }
     
-    // Final IDL validation: ensure no undefined/null values remain
-    // Anchor's translateAddress function is called for various addresses in the IDL
+    // Multi-stage IDL cleaning to ensure no undefined/null values remain
+    // Anchor's translateAddress function may be called for various addresses in the IDL
     // We need to ensure all address-like fields are valid strings or removed
-    const idlString = JSON.stringify(sanitizedIdl);
-    if (idlString.includes('undefined') || idlString === 'null') {
-      console.warn('[SDK] IDL contains undefined/null values, attempting final clean');
-      // Remove any remaining undefined/null values by stringifying and parsing with replacer
-      sanitizedIdl = JSON.parse(JSON.stringify(sanitizedIdl, (key, value) => {
-        // Remove all undefined/null values
-        if (value === null || value === undefined) {
-          return undefined; // Remove from JSON
-        }
-        return value;
-      }));
-      
-      // Ensure metadata.address is still set after final clean
-      if (!sanitizedIdl.metadata) {
-        sanitizedIdl.metadata = {};
-      }
-      sanitizedIdl.metadata.address = programId.toString();
-    }
     
-    // Validate that metadata.address is a valid PublicKey string
-    try {
-      const testMetadataAddress = new PublicKey(sanitizedIdl.metadata.address);
-      const testMetadataAddressWithBn = testMetadataAddress as any;
-      if (!("_bn" in testMetadataAddressWithBn) || testMetadataAddressWithBn._bn === undefined) {
-        throw new Error("metadata.address PublicKey is missing _bn property");
+    // Stage 1: Remove undefined/null values using JSON replacer
+    sanitizedIdl = JSON.parse(JSON.stringify(sanitizedIdl, (key, value) => {
+      // Remove all undefined/null values
+      if (value === null || value === undefined) {
+        return undefined; // Remove from JSON
       }
-    } catch (err: any) {
-      throw new Error(`IDL metadata.address is invalid: ${err.message}`);
-    }
+      return value;
+    }));
     
-    // Log final IDL structure for debugging (limited to prevent large logs)
-    if (typeof console !== 'undefined' && console.log) {
-      try {
-        const idlSummary = {
-          version: sanitizedIdl.version,
-          name: sanitizedIdl.name,
-          instructions: sanitizedIdl.instructions?.length || 0,
-          accounts: sanitizedIdl.accounts?.length || 0,
-          metadata: sanitizedIdl.metadata,
-        };
-        console.log('[SDK] Final IDL summary:', JSON.stringify(idlSummary, null, 2));
-      } catch {
-        // Ignore logging errors
-      }
+    // Ensure metadata.address is still set after cleaning
+    if (!sanitizedIdl.metadata) {
+      sanitizedIdl.metadata = {};
     }
+    sanitizedIdl.metadata.address = programId.toString();
     
-    // Final validation: ensure IDL structure is completely clean
-    // Stringify and parse one more time to remove any hidden undefined/null values
+    // Stage 2: Final validation - ensure IDL structure is completely clean
     const finalIdlString = JSON.stringify(sanitizedIdl);
     if (finalIdlString.includes('undefined') || finalIdlString === 'null') {
       throw new Error('IDL still contains undefined/null values after cleaning');
@@ -445,15 +414,38 @@ export async function buildSwapIxWithAnchor(
       throw new Error('IDL metadata.address is missing after sanitization');
     }
     
-    // Validate metadata.address can be converted to PublicKey
+    // Stage 3: Validate metadata.address can be converted to PublicKey with _bn property
     try {
       const testMetaAddress = new PublicKey(sanitizedIdl.metadata.address);
       const testMetaAddressWithBn = testMetaAddress as any;
       if (!("_bn" in testMetaAddressWithBn) || testMetaAddressWithBn._bn === undefined) {
         throw new Error("metadata.address PublicKey is missing _bn property");
       }
+      // Verify the address matches programId
+      if (testMetaAddress.toString() !== programId.toString()) {
+        console.warn(`[SDK] IDL metadata.address (${testMetaAddress.toString()}) doesn't match programId (${programId.toString()}), updating`);
+        sanitizedIdl.metadata.address = programId.toString();
+      }
     } catch (err: any) {
       throw new Error(`IDL metadata.address validation failed: ${err.message}`);
+    }
+    
+    // Stage 4: Log final IDL structure for debugging (limited to prevent large logs)
+    if (typeof console !== 'undefined' && console.log) {
+      try {
+        const idlSummary = {
+          version: sanitizedIdl.version,
+          name: sanitizedIdl.name,
+          instructions: sanitizedIdl.instructions?.length || 0,
+          accounts: sanitizedIdl.accounts?.length || 0,
+          metadata: sanitizedIdl.metadata,
+          hasUndefined: finalIdlString.includes('undefined'),
+          hasNull: finalIdlString.includes('null'),
+        };
+        console.log('[SDK] Final IDL summary:', JSON.stringify(idlSummary, null, 2));
+      } catch {
+        // Ignore logging errors
+      }
     }
     
     // Use sanitized IDL instead of original to prevent _bn errors

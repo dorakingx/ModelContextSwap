@@ -269,42 +269,16 @@ async function buildSwapIxWithAnchor(anchor, params, options) {
         `Program ID PublicKey is missing _bn property before Program creation. PublicKey: ${programId.toString()}`
       );
     }
-    const idlString = JSON.stringify(sanitizedIdl);
-    if (idlString.includes("undefined") || idlString === "null") {
-      console.warn("[SDK] IDL contains undefined/null values, attempting final clean");
-      sanitizedIdl = JSON.parse(JSON.stringify(sanitizedIdl, (key, value) => {
-        if (value === null || value === void 0) {
-          return void 0;
-        }
-        return value;
-      }));
-      if (!sanitizedIdl.metadata) {
-        sanitizedIdl.metadata = {};
+    sanitizedIdl = JSON.parse(JSON.stringify(sanitizedIdl, (key, value) => {
+      if (value === null || value === void 0) {
+        return void 0;
       }
-      sanitizedIdl.metadata.address = programId.toString();
+      return value;
+    }));
+    if (!sanitizedIdl.metadata) {
+      sanitizedIdl.metadata = {};
     }
-    try {
-      const testMetadataAddress = new PublicKey(sanitizedIdl.metadata.address);
-      const testMetadataAddressWithBn = testMetadataAddress;
-      if (!("_bn" in testMetadataAddressWithBn) || testMetadataAddressWithBn._bn === void 0) {
-        throw new Error("metadata.address PublicKey is missing _bn property");
-      }
-    } catch (err) {
-      throw new Error(`IDL metadata.address is invalid: ${err.message}`);
-    }
-    if (typeof console !== "undefined" && console.log) {
-      try {
-        const idlSummary = {
-          version: sanitizedIdl.version,
-          name: sanitizedIdl.name,
-          instructions: sanitizedIdl.instructions?.length || 0,
-          accounts: sanitizedIdl.accounts?.length || 0,
-          metadata: sanitizedIdl.metadata
-        };
-        console.log("[SDK] Final IDL summary:", JSON.stringify(idlSummary, null, 2));
-      } catch {
-      }
-    }
+    sanitizedIdl.metadata.address = programId.toString();
     const finalIdlString = JSON.stringify(sanitizedIdl);
     if (finalIdlString.includes("undefined") || finalIdlString === "null") {
       throw new Error("IDL still contains undefined/null values after cleaning");
@@ -318,8 +292,27 @@ async function buildSwapIxWithAnchor(anchor, params, options) {
       if (!("_bn" in testMetaAddressWithBn) || testMetaAddressWithBn._bn === void 0) {
         throw new Error("metadata.address PublicKey is missing _bn property");
       }
+      if (testMetaAddress.toString() !== programId.toString()) {
+        console.warn(`[SDK] IDL metadata.address (${testMetaAddress.toString()}) doesn't match programId (${programId.toString()}), updating`);
+        sanitizedIdl.metadata.address = programId.toString();
+      }
     } catch (err) {
       throw new Error(`IDL metadata.address validation failed: ${err.message}`);
+    }
+    if (typeof console !== "undefined" && console.log) {
+      try {
+        const idlSummary = {
+          version: sanitizedIdl.version,
+          name: sanitizedIdl.name,
+          instructions: sanitizedIdl.instructions?.length || 0,
+          accounts: sanitizedIdl.accounts?.length || 0,
+          metadata: sanitizedIdl.metadata,
+          hasUndefined: finalIdlString.includes("undefined"),
+          hasNull: finalIdlString.includes("null")
+        };
+        console.log("[SDK] Final IDL summary:", JSON.stringify(idlSummary, null, 2));
+      } catch {
+      }
     }
     program = new Program(sanitizedIdl, programId, provider);
   } catch (err) {
