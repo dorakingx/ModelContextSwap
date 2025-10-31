@@ -308,11 +308,11 @@ export default function Home() {
                   <div style={{ flex: 1, position: "relative" }}>
                     <input
                       className="token-input-value"
-                      placeholder={isAutoCalculating ? "計算中..." : "0.0"}
+                      placeholder={isAutoCalculating ? "Calculating..." : "0.0"}
                       value={autoQuoteAmount && tokenTo ? formatTokenAmount(autoQuoteAmount, tokenTo.decimals) : ""}
                       readOnly
                       style={{ 
-                        color: autoQuoteAmount ? "var(--text-primary)" : "var(--text-light)",
+                        color: autoQuoteAmount ? "#1D1D1D" : "var(--text-light)",
                         cursor: "default"
                       }}
                       aria-label="Amount Out"
@@ -339,7 +339,7 @@ export default function Home() {
                 {autoQuoteAmount && tokenTo && (
                   <div style={{ 
                     fontSize: "0.75rem", 
-                    color: "var(--text-secondary)", 
+                    color: "#1D1D1D", 
                     marginTop: "0.5rem",
                     display: "flex",
                     alignItems: "center",
