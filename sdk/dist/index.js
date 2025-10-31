@@ -225,7 +225,29 @@ async function buildSwapIxWithAnchor(anchor, params, options) {
       return item;
     });
   }
-  let sanitizedIdl = {
+  function deepCleanObject(obj) {
+    if (obj === null || obj === void 0) {
+      return void 0;
+    }
+    if (Array.isArray(obj)) {
+      return obj.map(deepCleanObject).filter((item) => item !== void 0 && item !== null);
+    }
+    if (typeof obj === "object") {
+      const cleaned = {};
+      Object.keys(obj).forEach((key) => {
+        const val = obj[key];
+        if (val !== void 0 && val !== null) {
+          const cleanedVal = deepCleanObject(val);
+          if (cleanedVal !== void 0 && cleanedVal !== null) {
+            cleaned[key] = cleanedVal;
+          }
+        }
+      });
+      return cleaned;
+    }
+    return obj;
+  }
+  let sanitizedIdl = deepCleanObject({
     version: safeGet(dex_ai_default, "version", "0.1.0"),
     name: safeGet(dex_ai_default, "name", "dex_ai"),
     instructions: safeCopyArray(dex_ai_default.instructions),
@@ -233,58 +255,12 @@ async function buildSwapIxWithAnchor(anchor, params, options) {
     metadata: {
       address: programId.toString()
     }
-  };
+  });
+  if (!sanitizedIdl.metadata) {
+    sanitizedIdl.metadata = {};
+  }
   sanitizedIdl.metadata.address = programId.toString();
-  sanitizedIdl.instructions = sanitizedIdl.instructions.map((instruction) => {
-    if (!instruction || typeof instruction !== "object") {
-      return null;
-    }
-    const cleaned = {};
-    Object.keys(instruction).forEach((key) => {
-      const val = instruction[key];
-      if (val !== void 0 && val !== null) {
-        if (Array.isArray(val)) {
-          cleaned[key] = safeCopyArray(val);
-        } else if (typeof val === "object") {
-          const objCleaned = {};
-          Object.keys(val).forEach((k) => {
-            if (val[k] !== void 0 && val[k] !== null) {
-              objCleaned[k] = val[k];
-            }
-          });
-          cleaned[key] = objCleaned;
-        } else {
-          cleaned[key] = val;
-        }
-      }
-    });
-    return cleaned;
-  }).filter((item) => item !== null);
-  sanitizedIdl.accounts = sanitizedIdl.accounts.map((account) => {
-    if (!account || typeof account !== "object") {
-      return null;
-    }
-    const cleaned = {};
-    Object.keys(account).forEach((key) => {
-      const val = account[key];
-      if (val !== void 0 && val !== null) {
-        if (Array.isArray(val)) {
-          cleaned[key] = safeCopyArray(val);
-        } else if (typeof val === "object") {
-          const objCleaned = {};
-          Object.keys(val).forEach((k) => {
-            if (val[k] !== void 0 && val[k] !== null) {
-              objCleaned[k] = val[k];
-            }
-          });
-          cleaned[key] = objCleaned;
-        } else {
-          cleaned[key] = val;
-        }
-      }
-    });
-    return cleaned;
-  }).filter((item) => item !== null);
+  sanitizedIdl = deepCleanObject(sanitizedIdl);
   if (!sanitizedIdl.metadata) {
     sanitizedIdl.metadata = {};
   }
@@ -359,6 +335,36 @@ async function buildSwapIxWithAnchor(anchor, params, options) {
       throw new Error("Failed to create fresh provider wallet publicKey with _bn property");
     }
     provider.wallet.publicKey = freshProviderWalletPubkey;
+    if (!sanitizedIdl.metadata || !sanitizedIdl.metadata.address) {
+      throw new Error("IDL metadata.address is missing before Program creation");
+    }
+    try {
+      const testMetaAddress = new PublicKey(sanitizedIdl.metadata.address);
+      const testMetaAddressWithBn = testMetaAddress;
+      if (!("_bn" in testMetaAddressWithBn) || testMetaAddressWithBn._bn === void 0) {
+        throw new Error("metadata.address PublicKey is missing _bn property");
+      }
+      if (testMetaAddress.toString() !== freshProgramId.toString()) {
+        sanitizedIdl.metadata.address = freshProgramId.toString();
+      }
+    } catch (err) {
+      throw new Error(`IDL metadata.address is invalid before Program creation: ${err.message}`);
+    }
+    if (typeof console !== "undefined" && console.log) {
+      try {
+        const idlForLog = {
+          version: sanitizedIdl.version,
+          name: sanitizedIdl.name,
+          instructionsCount: sanitizedIdl.instructions?.length || 0,
+          accountsCount: sanitizedIdl.accounts?.length || 0,
+          metadata: sanitizedIdl.metadata
+        };
+        console.log("[SDK] Creating Program with IDL:", JSON.stringify(idlForLog, null, 2));
+        console.log("[SDK] Program ID:", freshProgramId.toString());
+        console.log("[SDK] Provider wallet publicKey:", freshProviderWalletPubkey.toString());
+      } catch {
+      }
+    }
     program = new Program(sanitizedIdl, freshProgramId, provider);
   } catch (err) {
     const idlMetadata = sanitizedIdl?.metadata || dex_ai_default.metadata;

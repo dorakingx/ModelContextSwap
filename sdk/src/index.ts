@@ -313,8 +313,35 @@ export async function buildSwapIxWithAnchor(
       });
   }
   
+  // Helper function to recursively clean objects, removing undefined/null
+  function deepCleanObject(obj: any): any {
+    if (obj === null || obj === undefined) {
+      return undefined;
+    }
+    if (Array.isArray(obj)) {
+      return obj
+        .map(deepCleanObject)
+        .filter((item) => item !== undefined && item !== null);
+    }
+    if (typeof obj === 'object') {
+      const cleaned: any = {};
+      Object.keys(obj).forEach((key) => {
+        const val = obj[key];
+        if (val !== undefined && val !== null) {
+          const cleanedVal = deepCleanObject(val);
+          if (cleanedVal !== undefined && cleanedVal !== null) {
+            cleaned[key] = cleanedVal;
+          }
+        }
+      });
+      return cleaned;
+    }
+    return obj;
+  }
+  
   // Build IDL from scratch with only valid values
-  let sanitizedIdl: any = {
+  // Use deep cleaning to ensure no undefined/null values exist anywhere
+  let sanitizedIdl: any = deepCleanObject({
     version: safeGet(idl, 'version', '0.1.0'),
     name: safeGet(idl, 'name', 'dex_ai'),
     instructions: safeCopyArray(idl.instructions),
@@ -322,66 +349,18 @@ export async function buildSwapIxWithAnchor(
     metadata: {
       address: programId.toString(),
     },
-  };
+  });
   
   // Ensure metadata.address is always set to programId (critical for Anchor)
+  if (!sanitizedIdl.metadata) {
+    sanitizedIdl.metadata = {};
+  }
   sanitizedIdl.metadata.address = programId.toString();
   
-  // Validate all instructions are clean
-  sanitizedIdl.instructions = sanitizedIdl.instructions.map((instruction: any) => {
-    if (!instruction || typeof instruction !== 'object') {
-      return null;
-    }
-    const cleaned: any = {};
-    Object.keys(instruction).forEach((key) => {
-      const val = instruction[key];
-      if (val !== undefined && val !== null) {
-        if (Array.isArray(val)) {
-          cleaned[key] = safeCopyArray(val);
-        } else if (typeof val === 'object') {
-          const objCleaned: any = {};
-          Object.keys(val).forEach((k) => {
-            if (val[k] !== undefined && val[k] !== null) {
-              objCleaned[k] = val[k];
-            }
-          });
-          cleaned[key] = objCleaned;
-        } else {
-          cleaned[key] = val;
-        }
-      }
-    });
-    return cleaned;
-  }).filter((item: any) => item !== null);
+  // Final deep clean to remove any nested undefined/null values
+  sanitizedIdl = deepCleanObject(sanitizedIdl);
   
-  // Validate all accounts are clean
-  sanitizedIdl.accounts = sanitizedIdl.accounts.map((account: any) => {
-    if (!account || typeof account !== 'object') {
-      return null;
-    }
-    const cleaned: any = {};
-    Object.keys(account).forEach((key) => {
-      const val = account[key];
-      if (val !== undefined && val !== null) {
-        if (Array.isArray(val)) {
-          cleaned[key] = safeCopyArray(val);
-        } else if (typeof val === 'object') {
-          const objCleaned: any = {};
-          Object.keys(val).forEach((k) => {
-            if (val[k] !== undefined && val[k] !== null) {
-              objCleaned[k] = val[k];
-            }
-          });
-          cleaned[key] = objCleaned;
-        } else {
-          cleaned[key] = val;
-        }
-      }
-    });
-    return cleaned;
-  }).filter((item: any) => item !== null);
-  
-  // Final validation: ensure metadata.address exists
+  // Ensure metadata.address is still set after deep cleaning
   if (!sanitizedIdl.metadata) {
     sanitizedIdl.metadata = {};
   }
@@ -488,9 +467,49 @@ export async function buildSwapIxWithAnchor(
     }
     provider.wallet.publicKey = freshProviderWalletPubkey;
     
+    // Final IDL validation: ensure metadata.address is a valid PublicKey string
+    // Anchor's translateAddress will be called for metadata.address, so it must be valid
+    if (!sanitizedIdl.metadata || !sanitizedIdl.metadata.address) {
+      throw new Error("IDL metadata.address is missing before Program creation");
+    }
+    
+    // Validate metadata.address can be converted to PublicKey
+    try {
+      const testMetaAddress = new PublicKey(sanitizedIdl.metadata.address);
+      const testMetaAddressWithBn = testMetaAddress as any;
+      if (!("_bn" in testMetaAddressWithBn) || testMetaAddressWithBn._bn === undefined) {
+        throw new Error("metadata.address PublicKey is missing _bn property");
+      }
+      // Ensure it matches programId
+      if (testMetaAddress.toString() !== freshProgramId.toString()) {
+        sanitizedIdl.metadata.address = freshProgramId.toString();
+      }
+    } catch (err: any) {
+      throw new Error(`IDL metadata.address is invalid before Program creation: ${err.message}`);
+    }
+    
+    // Log IDL structure for debugging
+    if (typeof console !== 'undefined' && console.log) {
+      try {
+        const idlForLog = {
+          version: sanitizedIdl.version,
+          name: sanitizedIdl.name,
+          instructionsCount: sanitizedIdl.instructions?.length || 0,
+          accountsCount: sanitizedIdl.accounts?.length || 0,
+          metadata: sanitizedIdl.metadata,
+        };
+        console.log('[SDK] Creating Program with IDL:', JSON.stringify(idlForLog, null, 2));
+        console.log('[SDK] Program ID:', freshProgramId.toString());
+        console.log('[SDK] Provider wallet publicKey:', freshProviderWalletPubkey.toString());
+      } catch {
+        // Ignore logging errors
+      }
+    }
+    
     // Use sanitized IDL with fresh PublicKey instances to prevent _bn errors
     // Note: Anchor's Program constructor will call translateAddress internally
     // which may access _bn property of various addresses in the IDL
+    // The constructor signature is: new Program(idl, programId, provider)
     program = new Program(sanitizedIdl, freshProgramId, provider);
   } catch (err: any) {
     // Enhanced error message for Program creation failures
