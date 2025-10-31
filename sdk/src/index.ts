@@ -282,54 +282,43 @@ export async function buildSwapIxWithAnchor(
     throw new Error("IDL is invalid or undefined");
   }
   
-  // Deep validation and sanitization of IDL to prevent _bn errors
-  // Anchor's Program constructor processes the entire IDL and may encounter undefined addresses
-  // Create a minimal, clean IDL structure to avoid any undefined address issues
-  // We manually construct a clean IDL to ensure no undefined/null values exist
+  // Completely rebuild IDL from scratch to ensure no undefined/null values
+  // Anchor's Program constructor calls translateAddress for various addresses in the IDL
+  // If any address is undefined, translateAddress will fail with _bn error
+  // By rebuilding the IDL manually, we ensure only valid values are included
   
-  // Recursively clean and copy IDL structure, removing all undefined/null values
-  function deepCleanIdl(obj: any): any {
-    if (obj === null || obj === undefined) {
-      return undefined; // Remove null/undefined
-    }
-    
-    if (Array.isArray(obj)) {
-      return obj
-        .map(deepCleanIdl)
-        .filter((item) => item !== undefined && item !== null);
-    }
-    
-    if (typeof obj === 'object') {
-      const cleaned: any = {};
-      Object.keys(obj).forEach((key) => {
-        const value = obj[key];
-        
-        // Skip undefined/null values completely
-        if (value === undefined || value === null) {
-          return;
-        }
-        
-        // Recursively clean nested objects
-        const cleanedValue = deepCleanIdl(value);
-        if (cleanedValue !== undefined && cleanedValue !== null) {
-          cleaned[key] = cleanedValue;
-        }
-      });
-      return cleaned;
-    }
-    
-    return obj;
+  // Helper function to safely get value or default
+  function safeGet(obj: any, key: string, defaultValue: any): any {
+    const value = obj?.[key];
+    return (value !== undefined && value !== null) ? value : defaultValue;
   }
   
-  // Deep clean the original IDL first
-  const cleanedIdl = deepCleanIdl(idl);
+  // Helper function to safely copy array, filtering out undefined/null
+  function safeCopyArray(arr: any[] | undefined | null): any[] {
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .filter((item) => item !== undefined && item !== null)
+      .map((item) => {
+        if (typeof item === 'object' && item !== null) {
+          const cleaned: any = {};
+          Object.keys(item).forEach((key) => {
+            const val = item[key];
+            if (val !== undefined && val !== null) {
+              cleaned[key] = val;
+            }
+          });
+          return cleaned;
+        }
+        return item;
+      });
+  }
   
-  // Create sanitized IDL with explicit structure
+  // Build IDL from scratch with only valid values
   let sanitizedIdl: any = {
-    version: cleanedIdl?.version || idl.version || "0.1.0",
-    name: cleanedIdl?.name || idl.name || "dex_ai",
-    instructions: cleanedIdl?.instructions || idl.instructions || [],
-    accounts: cleanedIdl?.accounts || idl.accounts || [],
+    version: safeGet(idl, 'version', '0.1.0'),
+    name: safeGet(idl, 'name', 'dex_ai'),
+    instructions: safeCopyArray(idl.instructions),
+    accounts: safeCopyArray(idl.accounts),
     metadata: {
       address: programId.toString(),
     },
@@ -338,26 +327,61 @@ export async function buildSwapIxWithAnchor(
   // Ensure metadata.address is always set to programId (critical for Anchor)
   sanitizedIdl.metadata.address = programId.toString();
   
-  // Remove any additional metadata fields that might contain undefined addresses
-  // Only keep safe, non-undefined fields
-  if (cleanedIdl?.metadata && typeof cleanedIdl.metadata === 'object') {
-    Object.keys(cleanedIdl.metadata).forEach((key) => {
-      if (key === 'address') {
-        // Already set above, skip
-        return;
-      }
-      const value = cleanedIdl.metadata[key];
-      // Only copy non-undefined, non-null, non-empty values
-      if (value !== undefined && value !== null && value !== '') {
-        sanitizedIdl.metadata[key] = value;
+  // Validate all instructions are clean
+  sanitizedIdl.instructions = sanitizedIdl.instructions.map((instruction: any) => {
+    if (!instruction || typeof instruction !== 'object') {
+      return null;
+    }
+    const cleaned: any = {};
+    Object.keys(instruction).forEach((key) => {
+      const val = instruction[key];
+      if (val !== undefined && val !== null) {
+        if (Array.isArray(val)) {
+          cleaned[key] = safeCopyArray(val);
+        } else if (typeof val === 'object') {
+          const objCleaned: any = {};
+          Object.keys(val).forEach((k) => {
+            if (val[k] !== undefined && val[k] !== null) {
+              objCleaned[k] = val[k];
+            }
+          });
+          cleaned[key] = objCleaned;
+        } else {
+          cleaned[key] = val;
+        }
       }
     });
-  }
+    return cleaned;
+  }).filter((item: any) => item !== null);
   
-  // Final deep clean of the sanitized IDL
-  sanitizedIdl = deepCleanIdl(sanitizedIdl);
+  // Validate all accounts are clean
+  sanitizedIdl.accounts = sanitizedIdl.accounts.map((account: any) => {
+    if (!account || typeof account !== 'object') {
+      return null;
+    }
+    const cleaned: any = {};
+    Object.keys(account).forEach((key) => {
+      const val = account[key];
+      if (val !== undefined && val !== null) {
+        if (Array.isArray(val)) {
+          cleaned[key] = safeCopyArray(val);
+        } else if (typeof val === 'object') {
+          const objCleaned: any = {};
+          Object.keys(val).forEach((k) => {
+            if (val[k] !== undefined && val[k] !== null) {
+              objCleaned[k] = val[k];
+            }
+          });
+          cleaned[key] = objCleaned;
+        } else {
+          cleaned[key] = val;
+        }
+      }
+    });
+    return cleaned;
+  }).filter((item: any) => item !== null);
   
-  // Ensure metadata.address is still set after final cleaning
+  // Final validation: ensure metadata.address exists
   if (!sanitizedIdl.metadata) {
     sanitizedIdl.metadata = {};
   }

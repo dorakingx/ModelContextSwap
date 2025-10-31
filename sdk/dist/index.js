@@ -205,52 +205,86 @@ async function buildSwapIxWithAnchor(anchor, params, options) {
   if (!dex_ai_default || typeof dex_ai_default !== "object") {
     throw new Error("IDL is invalid or undefined");
   }
-  function deepCleanIdl(obj) {
-    if (obj === null || obj === void 0) {
-      return void 0;
-    }
-    if (Array.isArray(obj)) {
-      return obj.map(deepCleanIdl).filter((item) => item !== void 0 && item !== null);
-    }
-    if (typeof obj === "object") {
-      const cleaned = {};
-      Object.keys(obj).forEach((key) => {
-        const value = obj[key];
-        if (value === void 0 || value === null) {
-          return;
-        }
-        const cleanedValue = deepCleanIdl(value);
-        if (cleanedValue !== void 0 && cleanedValue !== null) {
-          cleaned[key] = cleanedValue;
-        }
-      });
-      return cleaned;
-    }
-    return obj;
+  function safeGet(obj, key, defaultValue) {
+    const value = obj?.[key];
+    return value !== void 0 && value !== null ? value : defaultValue;
   }
-  const cleanedIdl = deepCleanIdl(dex_ai_default);
+  function safeCopyArray(arr) {
+    if (!Array.isArray(arr)) return [];
+    return arr.filter((item) => item !== void 0 && item !== null).map((item) => {
+      if (typeof item === "object" && item !== null) {
+        const cleaned = {};
+        Object.keys(item).forEach((key) => {
+          const val = item[key];
+          if (val !== void 0 && val !== null) {
+            cleaned[key] = val;
+          }
+        });
+        return cleaned;
+      }
+      return item;
+    });
+  }
   let sanitizedIdl = {
-    version: cleanedIdl?.version || dex_ai_default.version || "0.1.0",
-    name: cleanedIdl?.name || dex_ai_default.name || "dex_ai",
-    instructions: cleanedIdl?.instructions || dex_ai_default.instructions || [],
-    accounts: cleanedIdl?.accounts || dex_ai_default.accounts || [],
+    version: safeGet(dex_ai_default, "version", "0.1.0"),
+    name: safeGet(dex_ai_default, "name", "dex_ai"),
+    instructions: safeCopyArray(dex_ai_default.instructions),
+    accounts: safeCopyArray(dex_ai_default.accounts),
     metadata: {
       address: programId.toString()
     }
   };
   sanitizedIdl.metadata.address = programId.toString();
-  if (cleanedIdl?.metadata && typeof cleanedIdl.metadata === "object") {
-    Object.keys(cleanedIdl.metadata).forEach((key) => {
-      if (key === "address") {
-        return;
-      }
-      const value = cleanedIdl.metadata[key];
-      if (value !== void 0 && value !== null && value !== "") {
-        sanitizedIdl.metadata[key] = value;
+  sanitizedIdl.instructions = sanitizedIdl.instructions.map((instruction) => {
+    if (!instruction || typeof instruction !== "object") {
+      return null;
+    }
+    const cleaned = {};
+    Object.keys(instruction).forEach((key) => {
+      const val = instruction[key];
+      if (val !== void 0 && val !== null) {
+        if (Array.isArray(val)) {
+          cleaned[key] = safeCopyArray(val);
+        } else if (typeof val === "object") {
+          const objCleaned = {};
+          Object.keys(val).forEach((k) => {
+            if (val[k] !== void 0 && val[k] !== null) {
+              objCleaned[k] = val[k];
+            }
+          });
+          cleaned[key] = objCleaned;
+        } else {
+          cleaned[key] = val;
+        }
       }
     });
-  }
-  sanitizedIdl = deepCleanIdl(sanitizedIdl);
+    return cleaned;
+  }).filter((item) => item !== null);
+  sanitizedIdl.accounts = sanitizedIdl.accounts.map((account) => {
+    if (!account || typeof account !== "object") {
+      return null;
+    }
+    const cleaned = {};
+    Object.keys(account).forEach((key) => {
+      const val = account[key];
+      if (val !== void 0 && val !== null) {
+        if (Array.isArray(val)) {
+          cleaned[key] = safeCopyArray(val);
+        } else if (typeof val === "object") {
+          const objCleaned = {};
+          Object.keys(val).forEach((k) => {
+            if (val[k] !== void 0 && val[k] !== null) {
+              objCleaned[k] = val[k];
+            }
+          });
+          cleaned[key] = objCleaned;
+        } else {
+          cleaned[key] = val;
+        }
+      }
+    });
+    return cleaned;
+  }).filter((item) => item !== null);
   if (!sanitizedIdl.metadata) {
     sanitizedIdl.metadata = {};
   }
