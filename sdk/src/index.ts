@@ -829,14 +829,52 @@ export async function buildSwapIxWithAnchor(
       
       // Now create Program with IDL that has metadata.address set
       // This ensures Anchor has a fallback if programId is somehow undefined
+      
+      // Log idlWithMetadata before Program creation for debugging
+      if (typeof console !== 'undefined' && console.log) {
+        try {
+          console.log('[SDK] About to create Program with idlWithMetadata:', {
+            hasMetadata: !!idlWithMetadata.metadata,
+            metadataAddress: idlWithMetadata.metadata?.address,
+            metadataAddressType: typeof idlWithMetadata.metadata?.address,
+            programId: freshProgramId.toString(),
+            programIdMatches: idlWithMetadata.metadata?.address === freshProgramId.toString(),
+          });
+        } catch {
+          // Ignore logging errors
+        }
+      }
+      
       program = new Program(idlWithMetadata, freshProgramId, provider);
     } catch (programErr: any) {
       // If error occurs, log detailed information about what was passed
+      // Note: idlWithMetadata may not be defined if error occurred before its creation
+      let idlWithMetadata: any;
+      try {
+        idlWithMetadata = {
+          ...finalIdl,
+          metadata: {
+            ...finalIdl.metadata,
+            address: freshProgramId.toString(),
+          },
+        };
+      } catch {
+        // If we can't create idlWithMetadata, use undefined
+        idlWithMetadata = undefined;
+      }
+      
       const debugInfo = {
         finalIdlType: typeof finalIdl,
         finalIdlKeys: finalIdl ? Object.keys(finalIdl) : [],
         finalIdlHasMetadata: !!finalIdl?.metadata,
         finalIdlMetadataKeys: finalIdl?.metadata ? Object.keys(finalIdl.metadata) : [],
+        // Information about idlWithMetadata that was actually passed to Program constructor
+        idlWithMetadataType: typeof idlWithMetadata,
+        idlWithMetadataKeys: idlWithMetadata ? Object.keys(idlWithMetadata) : [],
+        idlWithMetadataHasMetadata: !!idlWithMetadata?.metadata,
+        idlWithMetadataMetadataKeys: idlWithMetadata?.metadata ? Object.keys(idlWithMetadata.metadata) : [],
+        idlWithMetadataAddress: idlWithMetadata?.metadata?.address || 'undefined',
+        idlWithMetadataAddressType: typeof idlWithMetadata?.metadata?.address,
         programIdType: typeof freshProgramId,
         programIdInstanceof: freshProgramId instanceof PublicKey,
         programIdToString: freshProgramId?.toString(),

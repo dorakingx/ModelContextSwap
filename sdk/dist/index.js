@@ -574,13 +574,44 @@ async function buildSwapIxWithAnchor(anchor, params, options) {
       } catch (err) {
         throw new Error(`IDL metadata.address is invalid: ${err.message}`);
       }
+      if (typeof console !== "undefined" && console.log) {
+        try {
+          console.log("[SDK] About to create Program with idlWithMetadata:", {
+            hasMetadata: !!idlWithMetadata.metadata,
+            metadataAddress: idlWithMetadata.metadata?.address,
+            metadataAddressType: typeof idlWithMetadata.metadata?.address,
+            programId: freshProgramId.toString(),
+            programIdMatches: idlWithMetadata.metadata?.address === freshProgramId.toString()
+          });
+        } catch {
+        }
+      }
       program = new Program(idlWithMetadata, freshProgramId, provider);
     } catch (programErr) {
+      let idlWithMetadata;
+      try {
+        idlWithMetadata = {
+          ...finalIdl,
+          metadata: {
+            ...finalIdl.metadata,
+            address: freshProgramId.toString()
+          }
+        };
+      } catch {
+        idlWithMetadata = void 0;
+      }
       const debugInfo = {
         finalIdlType: typeof finalIdl,
         finalIdlKeys: finalIdl ? Object.keys(finalIdl) : [],
         finalIdlHasMetadata: !!finalIdl?.metadata,
         finalIdlMetadataKeys: finalIdl?.metadata ? Object.keys(finalIdl.metadata) : [],
+        // Information about idlWithMetadata that was actually passed to Program constructor
+        idlWithMetadataType: typeof idlWithMetadata,
+        idlWithMetadataKeys: idlWithMetadata ? Object.keys(idlWithMetadata) : [],
+        idlWithMetadataHasMetadata: !!idlWithMetadata?.metadata,
+        idlWithMetadataMetadataKeys: idlWithMetadata?.metadata ? Object.keys(idlWithMetadata.metadata) : [],
+        idlWithMetadataAddress: idlWithMetadata?.metadata?.address || "undefined",
+        idlWithMetadataAddressType: typeof idlWithMetadata?.metadata?.address,
         programIdType: typeof freshProgramId,
         programIdInstanceof: freshProgramId instanceof PublicKey,
         programIdToString: freshProgramId?.toString(),
