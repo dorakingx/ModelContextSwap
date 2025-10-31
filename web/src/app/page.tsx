@@ -11,7 +11,7 @@ import { Token, POPULAR_TOKENS } from "@/utils/tokens";
 import { getTokenIconStyle } from "@/utils/tokenIcons";
 import { WalletButton } from "@/components/WalletButton";
 import { useWallet, useConnection } from "@solana/wallet-adapter-react";
-import { Transaction, PublicKey } from "@solana/web3.js";
+import { Transaction, TransactionInstruction, PublicKey, AccountMeta } from "@solana/web3.js";
 
 export default function Home() {
   const [amountIn, setAmountIn] = useState("");
@@ -208,6 +208,11 @@ export default function Home() {
       return;
     }
 
+    if (!amountIn.trim() || parseFloat(amountIn) <= 0) {
+      alert("Please enter a valid amount to swap.");
+      return;
+    }
+
     setSwapLoading(true);
     setSwapTxSignature(null);
 
@@ -217,32 +222,50 @@ export default function Home() {
       const minAmountOut = quote.amountOut;
 
       // Note: These are placeholder values - in production, these should be fetched from
-      // the actual DEX protocol or pool contracts
+      // the actual DEX protocol or pool contracts using the token mints
+      // For now, we use simplified derivation that may not work with actual protocol
       const programId = new PublicKey("Dex111111111111111111111111111111111111111");
-      const pool = PublicKey.findProgramAddressSync(
-        [Buffer.from("pool"), tokenFrom.mint.slice(0, 8), tokenTo.mint.slice(0, 8)],
-        programId
-      )[0];
+      
+      // Derive pool address from token mints
+      const poolSeed = Buffer.concat([
+        Buffer.from("pool"),
+        new PublicKey(tokenFrom.mint).toBuffer().slice(0, 8),
+        new PublicKey(tokenTo.mint).toBuffer().slice(0, 8),
+      ]);
+      const [pool] = PublicKey.findProgramAddressSync([poolSeed], programId);
+      
       const user = publicKey;
       
       // Derive user token accounts (simplified - in production, these should be actual token accounts)
-      const userSource = PublicKey.findProgramAddressSync(
-        [Buffer.from("token"), user.toBuffer(), tokenFrom.mint.slice(0, 8)],
-        programId
-      )[0];
-      const userDestination = PublicKey.findProgramAddressSync(
-        [Buffer.from("token"), user.toBuffer(), tokenTo.mint.slice(0, 8)],
-        programId
-      )[0];
+      const userSourceSeed = Buffer.concat([
+        Buffer.from("token"),
+        user.toBuffer(),
+        new PublicKey(tokenFrom.mint).toBuffer().slice(0, 8),
+      ]);
+      const [userSource] = PublicKey.findProgramAddressSync([userSourceSeed], programId);
       
-      const vaultA = PublicKey.findProgramAddressSync(
-        [Buffer.from("vault"), pool.toBuffer(), tokenFrom.mint.slice(0, 8)],
-        programId
-      )[0];
-      const vaultB = PublicKey.findProgramAddressSync(
-        [Buffer.from("vault"), pool.toBuffer(), tokenTo.mint.slice(0, 8)],
-        programId
-      )[0];
+      const userDestinationSeed = Buffer.concat([
+        Buffer.from("token"),
+        user.toBuffer(),
+        new PublicKey(tokenTo.mint).toBuffer().slice(0, 8),
+      ]);
+      const [userDestination] = PublicKey.findProgramAddressSync([userDestinationSeed], programId);
+      
+      // Derive vault addresses
+      const vaultASeed = Buffer.concat([
+        Buffer.from("vault"),
+        pool.toBuffer(),
+        new PublicKey(tokenFrom.mint).toBuffer().slice(0, 8),
+      ]);
+      const [vaultA] = PublicKey.findProgramAddressSync([vaultASeed], programId);
+      
+      const vaultBSeed = Buffer.concat([
+        Buffer.from("vault"),
+        pool.toBuffer(),
+        new PublicKey(tokenTo.mint).toBuffer().slice(0, 8),
+      ]);
+      const [vaultB] = PublicKey.findProgramAddressSync([vaultBSeed], programId);
+      
       const tokenProgram = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
 
       // Build instruction
@@ -276,16 +299,18 @@ export default function Home() {
       // Build transaction
       const transaction = new Transaction();
       
-      // Reconstruct instruction from API response
-      const swapIx = {
+      // Reconstruct TransactionInstruction from API response
+      const accountMetas: AccountMeta[] = instructionData.keys.map((k: any) => ({
+        pubkey: new PublicKey(k.pubkey),
+        isSigner: k.isSigner,
+        isWritable: k.isWritable,
+      }));
+
+      const swapIx = new TransactionInstruction({
         programId: new PublicKey(instructionData.programId),
-        keys: instructionData.keys.map((k: any) => ({
-          pubkey: new PublicKey(k.pubkey),
-          isSigner: k.isSigner,
-          isWritable: k.isWritable,
-        })),
+        keys: accountMetas,
         data: Buffer.from(instructionData.data, "base64"),
-      };
+      });
 
       transaction.add(swapIx);
 
@@ -297,17 +322,35 @@ export default function Home() {
       // Send transaction
       const signature = await sendTransaction(transaction, connection, {
         skipPreflight: false,
+        maxRetries: 3,
       });
 
       setSwapTxSignature(signature);
 
       // Wait for confirmation
-      await connection.confirmTransaction(signature, "confirmed");
+      const confirmation = await connection.confirmTransaction(signature, "confirmed");
       
-      alert(`Swap successful! Transaction signature: ${signature}`);
+      if (confirmation.value.err) {
+        throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+      }
+      
+      // Show success message
+      console.log(`Swap successful! Transaction signature: ${signature}`);
     } catch (err: any) {
       console.error("Swap error:", err);
-      alert(`Swap failed: ${err.message || "Unknown error"}`);
+      setSwapTxSignature(null);
+      
+      // Show user-friendly error message
+      let errorMessage = "Swap failed: ";
+      if (err.message) {
+        errorMessage += err.message;
+      } else if (typeof err === "string") {
+        errorMessage += err;
+      } else {
+        errorMessage += "Unknown error occurred. Please check the console for details.";
+      }
+      
+      alert(errorMessage);
     } finally {
       setSwapLoading(false);
     }
