@@ -33,11 +33,63 @@ export default function Home() {
   
   const { status: mcpStatus, error: mcpError } = useMcpServer();
 
+  // Format token amount from raw units (with decimals) to display units
+  const formatTokenAmount = useCallback((rawAmount: string, decimals: number): string => {
+    try {
+      const rawBigInt = BigInt(rawAmount);
+      const divisor = BigInt(10 ** decimals);
+      const wholePart = rawBigInt / divisor;
+      const fractionalPart = rawBigInt % divisor;
+      
+      // Format whole part with commas
+      const wholePartFormatted = wholePart.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+      
+      if (fractionalPart === 0n) {
+        return wholePartFormatted;
+      }
+      
+      // Format fractional part with leading zeros
+      const fractionalStr = fractionalPart.toString().padStart(decimals, '0');
+      // Remove trailing zeros
+      const trimmedFractional = fractionalStr.replace(/0+$/, '');
+      
+      return trimmedFractional ? `${wholePartFormatted}.${trimmedFractional}` : wholePartFormatted;
+    } catch {
+      return rawAmount;
+    }
+  }, []);
+
+  // Auto-calculate quote function (doesn't reset quote on error)
+  const autoCalculateQuote = useCallback(async (params: { amountIn: string; reserveIn: string; reserveOut: string; feeBps: string }) => {
+    try {
+      const res = await fetch(`/api/get_dex_quote`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(params),
+      });
+
+      const json = await res.json();
+
+      if (res.ok && json.amountOut) {
+        setAutoQuoteAmount(json.amountOut);
+        return json.amountOut;
+      } else {
+        // Silently fail for auto-calculation
+        return null;
+      }
+    } catch (err) {
+      // Silently fail for auto-calculation
+      console.error("Auto-calculation error:", err);
+      return null;
+    }
+  }, []);
+
   // Auto-calculate quote when amount changes
   useEffect(() => {
     const timeoutId = setTimeout(async () => {
       if (!amountIn.trim() || !reserveIn.trim() || !reserveOut.trim() || !feeBps.trim()) {
         setAutoQuoteAmount(null);
+        setIsAutoCalculating(false);
         return;
       }
 
@@ -49,33 +101,26 @@ export default function Home() {
         
         if (isNaN(amountInNum) || isNaN(reserveInNum) || isNaN(reserveOutNum) || amountInNum <= 0) {
           setAutoQuoteAmount(null);
+          setIsAutoCalculating(false);
           return;
         }
 
         setIsAutoCalculating(true);
-        
-        try {
-          await getQuote({ amountIn, reserveIn, reserveOut, feeBps });
-        } catch (err) {
-          // Silently fail for auto-calculation
-          console.error("Auto-calculation error:", err);
-        }
-      } catch (err) {
+        await autoCalculateQuote({ amountIn, reserveIn, reserveOut, feeBps });
+    } catch (err) {
         setAutoQuoteAmount(null);
-      } finally {
+    } finally {
         setIsAutoCalculating(false);
       }
     }, 500); // Debounce 500ms
 
     return () => clearTimeout(timeoutId);
-  }, [amountIn, reserveIn, reserveOut, feeBps, getQuote]);
+  }, [amountIn, reserveIn, reserveOut, feeBps, autoCalculateQuote]);
 
-  // Update auto quote amount when quote changes
+  // Update auto quote amount when quote changes (from manual quote fetch)
   useEffect(() => {
-    if (quote) {
+    if (quote && quote.amountOut) {
       setAutoQuoteAmount(quote.amountOut);
-    } else {
-      setAutoQuoteAmount(null);
     }
   }, [quote]);
 
@@ -232,8 +277,8 @@ export default function Home() {
                   <div style={{ flex: 1, position: "relative" }}>
                     <input
                       className="token-input-value"
-                      placeholder="0.0"
-                      value={autoQuoteAmount ? formatLargeNumber(autoQuoteAmount) : ""}
+                      placeholder={isAutoCalculating ? "計算中..." : "0.0"}
+                      value={autoQuoteAmount && tokenTo ? formatTokenAmount(autoQuoteAmount, tokenTo.decimals) : ""}
                       readOnly
                       style={{ 
                         color: autoQuoteAmount ? "var(--text-primary)" : "var(--text-light)",
@@ -270,7 +315,7 @@ export default function Home() {
                     gap: "0.25rem"
                   }}>
                     <span>≈</span>
-                    <span>{formatLargeNumber(autoQuoteAmount)} {tokenTo.symbol}</span>
+                    <span>{formatTokenAmount(autoQuoteAmount, tokenTo.decimals)} {tokenTo.symbol}</span>
                   </div>
                 )}
               </div>
@@ -403,7 +448,7 @@ export default function Home() {
                           </div>
                         )}
                         <span style={{ fontWeight: 700, fontSize: "1.25rem", color: "var(--success)" }}>
-                          {formatLargeNumber(quote.amountOut)} {tokenTo?.symbol}
+                          {tokenTo ? formatTokenAmount(quote.amountOut, tokenTo.decimals) : formatLargeNumber(quote.amountOut)} {tokenTo?.symbol}
                         </span>
                       </div>
                     </div>
