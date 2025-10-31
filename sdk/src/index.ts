@@ -230,11 +230,27 @@ export async function buildSwapIxWithAnchor(
   // Get provider - use provided provider or fallback to AnchorProvider.local()
   // Note: AnchorProvider.local() may fail in serverless environments, so we expect
   // the caller to provide a custom provider via AnchorProvider.local() override
-  const provider = AnchorProvider.local();
+  let provider = AnchorProvider.local();
   
   if (!provider) {
     throw new Error("AnchorProvider.local() returned undefined or null");
   }
+  
+  // CRITICAL: Ensure provider is a plain object and not a proxy or class instance
+  // that might lose properties during serialization in serverless environments
+  // Recreate provider as a plain object to prevent any serialization issues
+  const providerConnection = provider.connection;
+  const providerWallet = provider.wallet;
+  const providerOpts = provider.opts;
+  const providerPublicKey = provider.publicKey;
+  
+  // Create a fresh provider object to ensure all properties are properly set
+  provider = {
+    connection: providerConnection,
+    wallet: providerWallet,
+    opts: providerOpts,
+    publicKey: providerPublicKey || providerWallet?.publicKey,
+  } as any;
   
   // Validate provider has required properties
   if (!provider.connection) {

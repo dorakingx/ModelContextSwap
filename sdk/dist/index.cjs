@@ -197,10 +197,20 @@ async function buildSwapIxWithAnchor(anchor, params, options) {
   const vaultA = assertPubkey("vaultA", params.vaultA);
   const vaultB = assertPubkey("vaultB", params.vaultB);
   const tokenProgram = assertPubkey("tokenProgram", params.tokenProgram);
-  const provider = AnchorProvider.local();
+  let provider = AnchorProvider.local();
   if (!provider) {
     throw new Error("AnchorProvider.local() returned undefined or null");
   }
+  const providerConnection = provider.connection;
+  const providerWallet = provider.wallet;
+  const providerOpts = provider.opts;
+  const providerPublicKey = provider.publicKey;
+  provider = {
+    connection: providerConnection,
+    wallet: providerWallet,
+    opts: providerOpts,
+    publicKey: providerPublicKey || providerWallet?.publicKey
+  };
   if (!provider.connection) {
     throw new Error("Provider is missing connection property");
   }
