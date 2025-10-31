@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { constantProductQuote } from "../../../../../sdk/src/index";
+import { constantProductQuote } from "dex-ai-sdk";
 
 export async function POST(req: NextRequest) {
   try {
