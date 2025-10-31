@@ -448,8 +448,8 @@ export default function Home() {
       const programIdPubkey = assertPubkey("instructionData.programId", instructionData.programId);
       
       // Validate programId _bn property exists after creation
-      const programIdWithBn = programIdPubkey as any;
-      if (!("_bn" in programIdWithBn) || programIdWithBn._bn === undefined) {
+      const programIdPubkeyWithBn = programIdPubkey as any;
+      if (!("_bn" in programIdPubkeyWithBn) || programIdPubkeyWithBn._bn === undefined) {
         throw new Error(
           `Program ID PublicKey is missing _bn property after creation. PublicKey: ${programIdPubkey.toString()}`
         );
