@@ -313,6 +313,22 @@ export default function Home() {
         minAmountOut: minAmountOut,
       };
 
+      // Debug: log all addresses for troubleshooting
+      if (process.env.NODE_ENV === "development") {
+        console.log("Swap instruction params:", {
+          programId: instructionParams.programId,
+          pool: instructionParams.pool,
+          user: instructionParams.user,
+          userSource: instructionParams.userSource,
+          userDestination: instructionParams.userDestination,
+          vaultA: instructionParams.vaultA,
+          vaultB: instructionParams.vaultB,
+          tokenProgram: instructionParams.tokenProgram,
+          amountIn: instructionParams.amountIn,
+          minAmountOut: instructionParams.minAmountOut,
+        });
+      }
+
       // Build instruction via API
       const ixRes = await fetch(`/api/build_solana_swap_instruction`, {
         method: "POST",
