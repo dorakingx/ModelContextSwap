@@ -583,6 +583,68 @@ export async function buildSwapIxWithAnchor(
       throw new Error('provider.wallet.publicKey is missing _bn property before Program creation');
     }
     
+    // CRITICAL: Some Anchor versions may access provider.publicKey directly
+    // If provider.publicKey is undefined or null, Anchor's translateAddress will fail with _bn error
+    // Ensure provider.publicKey is set to provider.wallet.publicKey if it doesn't exist or is invalid
+    if (!provider.publicKey || provider.publicKey === undefined || provider.publicKey === null) {
+      // Set provider.publicKey to provider.wallet.publicKey if it's missing or null
+      provider.publicKey = provider.wallet.publicKey;
+      if (typeof console !== 'undefined' && console.warn) {
+        console.warn('[SDK] provider.publicKey was missing/null/undefined, set to provider.wallet.publicKey');
+      }
+    } else {
+      // If provider.publicKey exists, ensure it's a PublicKey instance with _bn property
+      if (!(provider.publicKey instanceof PublicKey)) {
+        // If it's not a PublicKey instance, try to convert it
+        try {
+          const convertedProviderPubkey = new PublicKey(provider.publicKey.toString());
+          const convertedProviderPubkeyWithBn = convertedProviderPubkey as any;
+          if (!("_bn" in convertedProviderPubkeyWithBn) || convertedProviderPubkeyWithBn._bn === undefined) {
+            throw new Error('Converted provider.publicKey is missing _bn property');
+          }
+          provider.publicKey = convertedProviderPubkey;
+          if (typeof console !== 'undefined' && console.warn) {
+            console.warn('[SDK] provider.publicKey was not a PublicKey instance, converted it');
+          }
+        } catch (err: any) {
+          // If conversion fails, fall back to provider.wallet.publicKey
+          provider.publicKey = provider.wallet.publicKey;
+          if (typeof console !== 'undefined' && console.warn) {
+            console.warn('[SDK] Failed to convert provider.publicKey, using provider.wallet.publicKey instead');
+          }
+        }
+      } else {
+        // If provider.publicKey is a PublicKey instance, ensure it has _bn property
+        const providerPubkeyWithBn = provider.publicKey as any;
+        if (!("_bn" in providerPubkeyWithBn) || providerPubkeyWithBn._bn === undefined) {
+          // Recreate provider.publicKey if _bn is missing
+          try {
+            const recreatedProviderPubkey = new PublicKey(provider.publicKey.toString());
+            const recreatedProviderPubkeyWithBn = recreatedProviderPubkey as any;
+            if (!("_bn" in recreatedProviderPubkeyWithBn) || recreatedProviderPubkeyWithBn._bn === undefined) {
+              throw new Error('Failed to recreate provider.publicKey with _bn property');
+            }
+            provider.publicKey = recreatedProviderPubkey;
+            if (typeof console !== 'undefined' && console.warn) {
+              console.warn('[SDK] provider.publicKey was missing _bn property, recreated it');
+            }
+          } catch (err: any) {
+            // If recreation fails, fall back to provider.wallet.publicKey
+            provider.publicKey = provider.wallet.publicKey;
+            if (typeof console !== 'undefined' && console.warn) {
+              console.warn('[SDK] Failed to recreate provider.publicKey, using provider.wallet.publicKey instead');
+            }
+          }
+        }
+      }
+    }
+    
+    // Final validation: ensure provider.publicKey has _bn property
+    const finalProviderPubkeyWithBn = provider.publicKey as any;
+    if (!("_bn" in finalProviderPubkeyWithBn) || finalProviderPubkeyWithBn._bn === undefined) {
+      throw new Error('provider.publicKey is missing _bn property after validation');
+    }
+    
     // Log all parameters before Program creation for debugging
     if (typeof console !== 'undefined' && console.log) {
       try {
@@ -596,6 +658,9 @@ export async function buildSwapIxWithAnchor(
           providerWalletExists: !!provider.wallet,
           providerWalletPubkey: provider.wallet.publicKey.toString(),
           providerWalletPubkeyHasBn: "_bn" in finalProviderWalletPubkeyWithBn,
+          providerHasPubkey: !!provider.publicKey,
+          providerPubkey: provider.publicKey?.toString(),
+          providerPubkeyHasBn: provider.publicKey ? ("_bn" in finalProviderPubkeyWithBn) : false,
           finalIdlVersion: finalIdl.version,
           finalIdlName: finalIdl.name,
           finalIdlHasMetadata: !!finalIdl.metadata,

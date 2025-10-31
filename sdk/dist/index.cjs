@@ -437,6 +437,55 @@ async function buildSwapIxWithAnchor(anchor, params, options) {
     if (!("_bn" in finalProviderWalletPubkeyWithBn) || finalProviderWalletPubkeyWithBn._bn === void 0) {
       throw new Error("provider.wallet.publicKey is missing _bn property before Program creation");
     }
+    if (!provider.publicKey || provider.publicKey === void 0 || provider.publicKey === null) {
+      provider.publicKey = provider.wallet.publicKey;
+      if (typeof console !== "undefined" && console.warn) {
+        console.warn("[SDK] provider.publicKey was missing/null/undefined, set to provider.wallet.publicKey");
+      }
+    } else {
+      if (!(provider.publicKey instanceof import_web3.PublicKey)) {
+        try {
+          const convertedProviderPubkey = new import_web3.PublicKey(provider.publicKey.toString());
+          const convertedProviderPubkeyWithBn = convertedProviderPubkey;
+          if (!("_bn" in convertedProviderPubkeyWithBn) || convertedProviderPubkeyWithBn._bn === void 0) {
+            throw new Error("Converted provider.publicKey is missing _bn property");
+          }
+          provider.publicKey = convertedProviderPubkey;
+          if (typeof console !== "undefined" && console.warn) {
+            console.warn("[SDK] provider.publicKey was not a PublicKey instance, converted it");
+          }
+        } catch (err) {
+          provider.publicKey = provider.wallet.publicKey;
+          if (typeof console !== "undefined" && console.warn) {
+            console.warn("[SDK] Failed to convert provider.publicKey, using provider.wallet.publicKey instead");
+          }
+        }
+      } else {
+        const providerPubkeyWithBn = provider.publicKey;
+        if (!("_bn" in providerPubkeyWithBn) || providerPubkeyWithBn._bn === void 0) {
+          try {
+            const recreatedProviderPubkey = new import_web3.PublicKey(provider.publicKey.toString());
+            const recreatedProviderPubkeyWithBn = recreatedProviderPubkey;
+            if (!("_bn" in recreatedProviderPubkeyWithBn) || recreatedProviderPubkeyWithBn._bn === void 0) {
+              throw new Error("Failed to recreate provider.publicKey with _bn property");
+            }
+            provider.publicKey = recreatedProviderPubkey;
+            if (typeof console !== "undefined" && console.warn) {
+              console.warn("[SDK] provider.publicKey was missing _bn property, recreated it");
+            }
+          } catch (err) {
+            provider.publicKey = provider.wallet.publicKey;
+            if (typeof console !== "undefined" && console.warn) {
+              console.warn("[SDK] Failed to recreate provider.publicKey, using provider.wallet.publicKey instead");
+            }
+          }
+        }
+      }
+    }
+    const finalProviderPubkeyWithBn = provider.publicKey;
+    if (!("_bn" in finalProviderPubkeyWithBn) || finalProviderPubkeyWithBn._bn === void 0) {
+      throw new Error("provider.publicKey is missing _bn property after validation");
+    }
     if (typeof console !== "undefined" && console.log) {
       try {
         console.log("[SDK] About to create Program with:", {
@@ -449,6 +498,9 @@ async function buildSwapIxWithAnchor(anchor, params, options) {
           providerWalletExists: !!provider.wallet,
           providerWalletPubkey: provider.wallet.publicKey.toString(),
           providerWalletPubkeyHasBn: "_bn" in finalProviderWalletPubkeyWithBn,
+          providerHasPubkey: !!provider.publicKey,
+          providerPubkey: provider.publicKey?.toString(),
+          providerPubkeyHasBn: provider.publicKey ? "_bn" in finalProviderPubkeyWithBn : false,
           finalIdlVersion: finalIdl.version,
           finalIdlName: finalIdl.name,
           finalIdlHasMetadata: !!finalIdl.metadata
