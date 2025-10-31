@@ -1,4 +1,4 @@
-import { PublicKey, TransactionInstruction } from '@solana/web3.js';
+import { PublicKey, Connection, TransactionInstruction } from '@solana/web3.js';
 
 type AnchorExports = {
     BN: any;
@@ -8,6 +8,14 @@ type AnchorExports = {
     };
     Idl?: any;
 };
+/**
+ * Safe conversion to BN with comprehensive undefined/null checks
+ * This function validates all possible undefined values before BN creation
+ */
+declare function safeConvertToBN(name: string, BN: any, value: string | number | bigint | undefined | null, options?: {
+    allowZero?: boolean;
+    maxValue?: string;
+}): any;
 type QuoteParams = {
     amountIn: bigint;
     reserveIn: bigint;
@@ -30,7 +38,16 @@ type SwapBuildParams = {
     amountIn: bigint;
     minAmountOut: bigint;
 };
-declare function buildSwapIxWithAnchor(anchor: AnchorExports, params: SwapBuildParams): Promise<TransactionInstruction>;
+type SwapValidationOptions = {
+    connection?: Connection;
+    validateTokenAccounts?: boolean;
+};
+/**
+ * Ensure token account exists and is valid
+ * Validates that the token account exists on-chain before swap execution
+ */
+declare function ensureTokenAccount(connection: Connection, tokenAccount: PublicKey, accountName: string, expectedMint?: PublicKey): Promise<void>;
+declare function buildSwapIxWithAnchor(anchor: AnchorExports, params: SwapBuildParams, options?: SwapValidationOptions): Promise<TransactionInstruction>;
 declare function buildSwapIx(_: SwapBuildParams): Promise<TransactionInstruction>;
 
-export { type QuoteParams, type QuoteResult, type SwapBuildParams, buildSwapIx, buildSwapIxWithAnchor, constantProductQuote };
+export { type QuoteParams, type QuoteResult, type SwapBuildParams, type SwapValidationOptions, buildSwapIx, buildSwapIxWithAnchor, constantProductQuote, ensureTokenAccount, safeConvertToBN };

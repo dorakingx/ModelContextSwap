@@ -1,5 +1,6 @@
 // src/index.ts
 import { PublicKey } from "@solana/web3.js";
+import { getAccount } from "@solana/spl-token";
 
 // src/dex_ai.json
 var dex_ai_default = {
@@ -53,28 +54,65 @@ function assertPubkey(name, v) {
     throw new Error(`${name} is invalid: ${err.message || "Invalid public key"}`);
   }
 }
-function assertBN(name, BN, value) {
+function safeConvertToBN(name, BN, value, options) {
   if (!BN || typeof BN !== "function") {
-    throw new Error(`BN class is invalid for ${name}`);
+    throw new Error(`BN class is invalid for ${name}: ${typeof BN}`);
   }
-  if (value === void 0 || value === null) {
-    throw new Error(`${name} is missing`);
+  if (value === void 0) {
+    throw new Error(`${name} is undefined`);
+  }
+  if (value === null) {
+    throw new Error(`${name} is null`);
+  }
+  let valueStr;
+  try {
+    if (typeof value === "bigint") {
+      valueStr = value.toString();
+    } else if (typeof value === "number") {
+      if (!Number.isFinite(value) || Number.isNaN(value)) {
+        throw new Error(`${name} is not a valid number: ${value}`);
+      }
+      valueStr = value.toString();
+    } else {
+      valueStr = String(value);
+    }
+  } catch (err) {
+    throw new Error(`Failed to convert ${name} to string: ${err.message || "Unknown error"}`);
+  }
+  if (!valueStr || valueStr.trim() === "") {
+    throw new Error(`${name} is an empty string`);
+  }
+  const trimmedStr = valueStr.trim();
+  if (!/^-?\d+$/.test(trimmedStr)) {
+    throw new Error(`${name} contains invalid characters: "${trimmedStr}"`);
+  }
+  if (!options?.allowZero && trimmedStr === "0") {
+    throw new Error(`${name} cannot be zero`);
+  }
+  if (options?.maxValue) {
+    try {
+      const maxBN = new BN(options.maxValue);
+      const valueBN = new BN(trimmedStr);
+      if (valueBN.gt(maxBN)) {
+        throw new Error(`${name} exceeds maximum value: ${options.maxValue}`);
+      }
+    } catch {
+    }
   }
   try {
-    const valueStr = typeof value === "bigint" ? value.toString() : String(value);
-    if (!valueStr || valueStr.trim() === "" || isNaN(Number(valueStr))) {
-      throw new Error(`Invalid ${name} value: "${valueStr}"`);
-    }
-    const bn = new BN(valueStr);
+    const bn = new BN(trimmedStr);
     if (!bn || typeof bn.toString !== "function") {
-      throw new Error(`Failed to create valid BN instance for ${name}`);
+      throw new Error(`BN instance is invalid: missing toString method`);
+    }
+    if (bn._bn === void 0 && typeof bn.toNumber !== "function") {
+      throw new Error(`BN instance is missing required methods`);
     }
     return bn;
   } catch (err) {
-    if (err.message && err.message.includes("is missing") || err.message.includes("is invalid")) {
+    if (err.message && (err.message.includes("is undefined") || err.message.includes("is null") || err.message.includes("is invalid"))) {
       throw err;
     }
-    throw new Error(`Failed to create BN for ${name}: ${err.message || "Unknown error"}`);
+    throw new Error(`Failed to create BN for ${name} from "${trimmedStr}": ${err.message || "Unknown error"}`);
   }
 }
 function constantProductQuote({ amountIn, reserveIn, reserveOut, feeBps }) {
@@ -87,7 +125,38 @@ function constantProductQuote({ amountIn, reserveIn, reserveOut, feeBps }) {
   const denominator = reserveIn + amountInAfterFee;
   return { amountOut: numerator / denominator };
 }
-async function buildSwapIxWithAnchor(anchor, params) {
+async function ensureTokenAccount(connection, tokenAccount, accountName, expectedMint) {
+  try {
+    const accountInfo = await connection.getAccountInfo(tokenAccount);
+    if (!accountInfo) {
+      throw new Error(`${accountName} token account does not exist: ${tokenAccount.toString()}`);
+    }
+    if (accountInfo.owner.toString() !== "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA") {
+      throw new Error(`${accountName} is not a valid token account: ${tokenAccount.toString()}`);
+    }
+    if (expectedMint) {
+      try {
+        const tokenAccountData = await getAccount(connection, tokenAccount);
+        if (tokenAccountData.mint.toString() !== expectedMint.toString()) {
+          throw new Error(
+            `${accountName} mint mismatch: expected ${expectedMint.toString()}, got ${tokenAccountData.mint.toString()}`
+          );
+        }
+      } catch (err) {
+        if (err.message && err.message.includes("mint mismatch")) {
+          throw err;
+        }
+        console.warn(`Could not verify mint for ${accountName}: ${err.message}`);
+      }
+    }
+  } catch (err) {
+    if (err.message && (err.message.includes("does not exist") || err.message.includes("not a valid token account"))) {
+      throw err;
+    }
+    throw new Error(`Failed to validate ${accountName} token account: ${err.message || "Unknown error"}`);
+  }
+}
+async function buildSwapIxWithAnchor(anchor, params, options) {
   const { BN, Program, AnchorProvider } = anchor;
   if (!BN || typeof BN !== "function") {
     throw new Error(`BN class is invalid: ${typeof BN}, constructor: ${BN?.name || "unknown"}`);
@@ -102,8 +171,18 @@ async function buildSwapIxWithAnchor(anchor, params) {
   const tokenProgram = assertPubkey("tokenProgram", params.tokenProgram);
   const provider = AnchorProvider.local();
   const program = new Program(dex_ai_default, programId, provider);
-  const amountInBN = assertBN("amountIn", BN, params.amountIn);
-  const minAmountOutBN = assertBN("minAmountOut", BN, params.minAmountOut);
+  const amountInBN = safeConvertToBN("amountIn", BN, params.amountIn, { allowZero: false });
+  const minAmountOutBN = safeConvertToBN("minAmountOut", BN, params.minAmountOut, { allowZero: false });
+  if (options?.connection && options?.validateTokenAccounts) {
+    try {
+      await ensureTokenAccount(options.connection, userSource, "userSource");
+      await ensureTokenAccount(options.connection, userDestination, "userDestination");
+      await ensureTokenAccount(options.connection, vaultA, "vaultA");
+      await ensureTokenAccount(options.connection, vaultB, "vaultB");
+    } catch (err) {
+      throw new Error(`Token account validation failed: ${err.message}`);
+    }
+  }
   try {
     const methods = program.methods;
     if (!methods || !methods.swap) {
@@ -137,34 +216,74 @@ async function buildSwapIxWithAnchor(anchor, params) {
     }
     return instruction;
   } catch (err) {
+    const errorMessage = err.message || "Unknown error";
     const errorDetails = {
-      message: err.message,
+      message: errorMessage,
       stack: err.stack,
-      amountInBN: {
-        type: typeof amountInBN,
-        constructor: amountInBN?.constructor?.name,
-        toString: amountInBN?.toString?.(),
-        has_toNumber: typeof amountInBN?.toNumber === "function",
-        has_bn: amountInBN?._bn !== void 0,
-        keys: amountInBN ? Object.keys(amountInBN).slice(0, 10) : []
-      },
-      minAmountOutBN: {
-        type: typeof minAmountOutBN,
-        constructor: minAmountOutBN?.constructor?.name,
-        toString: minAmountOutBN?.toString?.(),
-        has_toNumber: typeof minAmountOutBN?.toNumber === "function",
-        has_bn: minAmountOutBN?._bn !== void 0,
-        keys: minAmountOutBN ? Object.keys(minAmountOutBN).slice(0, 10) : []
-      },
-      BNClass: {
-        name: BN?.name,
-        type: typeof BN
+      step: "instruction_building",
+      params: {
+        programId: params.programId?.toString(),
+        pool: params.pool?.toString(),
+        user: params.user?.toString(),
+        userSource: params.userSource?.toString(),
+        userDestination: params.userDestination?.toString(),
+        vaultA: params.vaultA?.toString(),
+        vaultB: params.vaultB?.toString(),
+        amountIn: params.amountIn?.toString(),
+        minAmountOut: params.minAmountOut?.toString()
       }
     };
-    throw new Error(
-      `Failed to build swap instruction: ${err.message}
-Error details: ${JSON.stringify(errorDetails, null, 2)}`
-    );
+    if (amountInBN !== void 0) {
+      try {
+        errorDetails.amountInBN = {
+          type: typeof amountInBN,
+          constructor: amountInBN?.constructor?.name,
+          toString: amountInBN?.toString?.(),
+          toNumber: amountInBN?.toNumber?.(),
+          has_toNumber: typeof amountInBN?.toNumber === "function",
+          has_bn: amountInBN?._bn !== void 0,
+          keys: amountInBN ? Object.keys(amountInBN).slice(0, 10) : []
+        };
+      } catch {
+        errorDetails.amountInBN = { error: "Could not inspect amountInBN" };
+      }
+    }
+    if (minAmountOutBN !== void 0) {
+      try {
+        errorDetails.minAmountOutBN = {
+          type: typeof minAmountOutBN,
+          constructor: minAmountOutBN?.constructor?.name,
+          toString: minAmountOutBN?.toString?.(),
+          toNumber: minAmountOutBN?.toNumber?.(),
+          has_toNumber: typeof minAmountOutBN?.toNumber === "function",
+          has_bn: minAmountOutBN?._bn !== void 0,
+          keys: minAmountOutBN ? Object.keys(minAmountOutBN).slice(0, 10) : []
+        };
+      } catch {
+        errorDetails.minAmountOutBN = { error: "Could not inspect minAmountOutBN" };
+      }
+    }
+    errorDetails.BNClass = {
+      name: BN?.name,
+      type: typeof BN,
+      isFunction: typeof BN === "function"
+    };
+    const enhancedMessage = [
+      `Failed to build swap instruction: ${errorMessage}`,
+      "",
+      "Error Details:",
+      JSON.stringify(errorDetails, null, 2),
+      "",
+      "Possible causes:",
+      "- Invalid or undefined PublicKey parameters",
+      "- Invalid BN values (undefined, null, or invalid format)",
+      "- Token accounts do not exist on-chain",
+      "- Anchor program methods not available",
+      "- Network connectivity issues"
+    ].join("\n");
+    const enhancedError = new Error(enhancedMessage);
+    enhancedError.stack = err.stack;
+    throw enhancedError;
   }
 }
 async function buildSwapIx(_) {
@@ -173,5 +292,7 @@ async function buildSwapIx(_) {
 export {
   buildSwapIx,
   buildSwapIxWithAnchor,
-  constantProductQuote
+  constantProductQuote,
+  ensureTokenAccount,
+  safeConvertToBN
 };
