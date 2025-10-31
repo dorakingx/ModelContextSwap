@@ -56,6 +56,30 @@ async function main() {
       validateTokenAccounts: false, // Set to true to enable validation (requires real accounts)
     };
 
+    // Log all parameters before building instruction for debugging
+    const swapParams = {
+      programId: programId.toString(),
+      pool: pool.toString(),
+      user: user.toString(),
+      userSource: userSource.toString(),
+      userDestination: userDestination.toString(),
+      vaultA: vaultA.toString(),
+      vaultB: vaultB.toString(),
+      tokenProgram: tokenProgram.toString(),
+      amountIn: amountIn.toString(),
+      minAmountOut: quote.amountOut.toString(),
+    };
+    
+    console.log("Swap params:", JSON.stringify(swapParams, null, 2));
+    
+    // Validate all parameters before calling buildSwapIxWithAnchor
+    if (!amountIn || amountIn <= 0n) {
+      throw new Error(`Invalid amountIn: ${amountIn}`);
+    }
+    if (!quote.amountOut || quote.amountOut <= 0n) {
+      throw new Error(`Invalid minAmountOut: ${quote.amountOut}`);
+    }
+
     const ix = await buildSwapIxWithAnchor(
       anchorExports,
       {
