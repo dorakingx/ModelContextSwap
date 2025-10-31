@@ -18,13 +18,14 @@ export function useMcpServer(): UseMcpServerReturn {
       setError(null);
       
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
 
       // Use /health endpoint for lighter health check
       const res = await fetch(`${config.mcpServerUrl}/health`, {
         method: "GET",
         headers: { "Content-Type": "application/json" },
         signal: controller.signal,
+        mode: "cors", // Explicitly set CORS mode
       });
 
       clearTimeout(timeoutId);
@@ -46,15 +47,25 @@ export function useMcpServer(): UseMcpServerReturn {
       setStatus("inactive");
       
       if (err instanceof Error) {
-        if (err.name === "AbortError") {
-          setError("Connection timeout - MCP server may be slow or unreachable");
-        } else if (err.message.includes("Failed to fetch") || err.message.includes("NetworkError")) {
-          setError(`Cannot connect to MCP server at ${config.mcpServerUrl}. Make sure the server is running.`);
+        // Only show error in development mode, or if it's a critical error
+        if (config.isDev) {
+          if (err.name === "AbortError") {
+            setError("Connection timeout - MCP server may be slow or unreachable");
+          } else if (err.message.includes("Failed to fetch") || err.message.includes("NetworkError") || err.message.includes("CORS")) {
+            setError(`Cannot connect to MCP server. The server may not be running or CORS is blocking the request.`);
+          } else {
+            setError(err.message || "MCP server connection failed");
+          }
         } else {
-          setError(err.message || "MCP server connection failed");
+          // In production, don't show error - just mark as inactive
+          setError(null);
         }
       } else {
-        setError("Unknown error connecting to MCP server");
+        if (config.isDev) {
+          setError("Unknown error connecting to MCP server");
+        } else {
+          setError(null);
+        }
       }
     }
   };

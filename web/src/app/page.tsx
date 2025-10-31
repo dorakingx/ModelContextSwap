@@ -12,6 +12,7 @@ import { getTokenIconStyle } from "@/utils/tokenIcons";
 import { WalletButton } from "@/components/WalletButton";
 import { useWallet, useConnection } from "@solana/wallet-adapter-react";
 import { Transaction, TransactionInstruction, PublicKey, AccountMeta } from "@solana/web3.js";
+import { config } from "@/config/env";
 
 export default function Home() {
   const [amountIn, setAmountIn] = useState("");
@@ -1201,13 +1202,13 @@ export default function Home() {
             </div>
           </div>
 
-          {mcpError && (
+          {mcpError && config.isDev && (
             <div className="error-card" style={{ marginBottom: "2rem", position: "relative" }}>
               <div style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem" }}>
                 <span style={{ fontSize: "1.5rem" }}>⚠️</span>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 600, color: "var(--text-primary)", marginBottom: "0.5rem", fontSize: "1rem" }}>
-                    Connection Error
+                    Connection Error (Development Only)
                   </div>
                   <div style={{ color: "var(--text-secondary)", fontSize: "0.9rem", marginBottom: "1rem", lineHeight: "1.6" }}>
                     {mcpError}
@@ -1246,106 +1247,6 @@ export default function Home() {
               </div>
             </div>
           )}
-
-          {/* API Endpoints */}
-          <div className="feature-grid">
-            <div className="feature-item">
-              <div style={{ 
-                display: "flex", 
-                alignItems: "center", 
-                gap: "0.75rem",
-                marginBottom: "0.75rem"
-              }}>
-                <div style={{ 
-                  width: "40px", 
-                  height: "40px", 
-                  borderRadius: "12px",
-                  background: "rgba(230, 57, 70, 0.1)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center"
-                }}>
-                  <span style={{ fontSize: "1.25rem" }}>📊</span>
-                </div>
-                <div style={{ 
-                  fontFamily: "monospace", 
-                  fontSize: "0.85rem", 
-                  fontWeight: 600,
-                  color: "var(--primary-red)"
-                }}>
-                  POST /get_dex_quote
-                </div>
-              </div>
-              <div style={{ 
-                fontSize: "0.9rem", 
-                color: "var(--text-secondary)",
-                lineHeight: "1.6"
-              }}>
-                Get deterministic quotes for token swaps with 30bps fee calculation
-              </div>
-            </div>
-
-            <div className="feature-item">
-              <div style={{ 
-                display: "flex", 
-                alignItems: "center", 
-                gap: "0.75rem",
-                marginBottom: "0.75rem"
-              }}>
-                <div style={{ 
-                  width: "40px", 
-                  height: "40px", 
-                  borderRadius: "12px",
-                  background: "rgba(230, 57, 70, 0.1)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center"
-                }}>
-                  <span style={{ fontSize: "1.25rem" }}>🔨</span>
-                </div>
-                <div style={{ 
-                  fontFamily: "monospace", 
-                  fontSize: "0.85rem", 
-                  fontWeight: 600,
-                  color: "var(--primary-red)"
-                }}>
-                  POST /build_solana_swap_instruction
-                </div>
-              </div>
-              <div style={{ 
-                fontSize: "0.9rem", 
-                color: "var(--text-secondary)",
-                lineHeight: "1.6"
-              }}>
-                Build Solana transaction instructions for executing swaps on-chain
-              </div>
-            </div>
-          </div>
-
-          {/* Connection Info */}
-          <div style={{ 
-            marginTop: "2rem", 
-            padding: "1.5rem", 
-            background: "var(--bg-secondary)", 
-            borderRadius: "16px",
-            border: "1px solid var(--border-default)"
-          }}>
-            <div style={{ 
-              fontSize: "0.9rem", 
-              color: "var(--text-secondary)",
-              lineHeight: "2",
-              display: "grid",
-              gridTemplateColumns: "auto 1fr",
-              gap: "0 1rem"
-            }}>
-              <strong style={{ color: "var(--text-primary)" }}>Connection:</strong>
-              <span>localhost:8080</span>
-              <strong style={{ color: "var(--text-primary)" }}>Framework:</strong>
-              <span>Fastify with MCP Plugin</span>
-              <strong style={{ color: "var(--text-primary)" }}>SDK:</strong>
-              <span>dex-ai-sdk</span>
-            </div>
-          </div>
         </div>
 
         {/* Footer */}
