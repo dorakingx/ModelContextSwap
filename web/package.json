@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "postinstall": "cd ../sdk && (test -d dist || (npm install --legacy-peer-deps --no-audit && npm run build)) || true",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
