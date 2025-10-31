@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { constantProductQuote } from "dex-ai-sdk";
-import { validateQuoteRequest, ValidationError } from "@/utils/validation";
-import { ApiError } from "@/types";
+import { validateQuoteRequest } from "@/utils/validation";
+import { ApiError, ValidationError } from "@/types";
 
 // Unified error response helper
 function createErrorResponse(error: unknown, statusCode: number = 400): Response {
