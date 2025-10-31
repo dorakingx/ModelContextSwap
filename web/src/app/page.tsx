@@ -1,6 +1,6 @@
 "use client";
-
-import { useState } from "react";
+ 
+import { useState, useEffect, useCallback } from "react";
 import "./globals.css";
 import { useDexApi } from "@/hooks/useDexApi";
 import { useMcpServer } from "@/hooks/useMcpServer";
@@ -8,6 +8,7 @@ import { SwapParams, SwapInstructionRequest } from "@/types";
 import { formatLargeNumber } from "@/utils/validation";
 import { TokenSelector } from "@/components/TokenSelector";
 import { Token, POPULAR_TOKENS } from "@/utils/tokens";
+import { getTokenIconStyle } from "@/utils/tokenIcons";
 
 export default function Home() {
   const [amountIn, setAmountIn] = useState("");
@@ -17,6 +18,8 @@ export default function Home() {
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [tokenFrom, setTokenFrom] = useState<Token | null>(POPULAR_TOKENS[0]); // SOL by default
   const [tokenTo, setTokenTo] = useState<Token | null>(POPULAR_TOKENS[1]); // USDC by default
+  const [autoQuoteAmount, setAutoQuoteAmount] = useState<string | null>(null);
+  const [isAutoCalculating, setIsAutoCalculating] = useState(false);
 
   const { 
     getQuote, 
@@ -29,6 +32,52 @@ export default function Home() {
   } = useDexApi();
   
   const { status: mcpStatus, error: mcpError } = useMcpServer();
+
+  // Auto-calculate quote when amount changes
+  useEffect(() => {
+    const timeoutId = setTimeout(async () => {
+      if (!amountIn.trim() || !reserveIn.trim() || !reserveOut.trim() || !feeBps.trim()) {
+        setAutoQuoteAmount(null);
+        return;
+      }
+
+      // Validate inputs
+      try {
+        const amountInNum = parseFloat(amountIn);
+        const reserveInNum = parseFloat(reserveIn);
+        const reserveOutNum = parseFloat(reserveOut);
+        
+        if (isNaN(amountInNum) || isNaN(reserveInNum) || isNaN(reserveOutNum) || amountInNum <= 0) {
+          setAutoQuoteAmount(null);
+          return;
+        }
+
+        setIsAutoCalculating(true);
+        
+        try {
+          await getQuote({ amountIn, reserveIn, reserveOut, feeBps });
+        } catch (err) {
+          // Silently fail for auto-calculation
+          console.error("Auto-calculation error:", err);
+        }
+      } catch (err) {
+        setAutoQuoteAmount(null);
+      } finally {
+        setIsAutoCalculating(false);
+      }
+    }, 500); // Debounce 500ms
+
+    return () => clearTimeout(timeoutId);
+  }, [amountIn, reserveIn, reserveOut, feeBps, getQuote]);
+
+  // Update auto quote amount when quote changes
+  useEffect(() => {
+    if (quote) {
+      setAutoQuoteAmount(quote.amountOut);
+    } else {
+      setAutoQuoteAmount(null);
+    }
+  }, [quote]);
 
   const handleGetQuote = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -180,33 +229,48 @@ export default function Home() {
                   You Receive
                 </div>
                 <div className="token-input-row">
-                  <input
-                    className="token-input-value"
-                    placeholder="0.0"
-                    value={reserveOut}
-                    onChange={e => {
-                      setReserveOut(e.target.value);
-                      if (formErrors.reserveOut) {
-                        setFormErrors(prev => {
-                          const newErrors = { ...prev };
-                          delete newErrors.reserveOut;
-                          return newErrors;
-                        });
-                      }
-                    }}
-                    aria-label="Reserve Out"
-                    aria-invalid={!!formErrors.reserveOut}
-                    aria-describedby={formErrors.reserveOut ? "reserveOut-error" : undefined}
-                  />
+                  <div style={{ flex: 1, position: "relative" }}>
+                    <input
+                      className="token-input-value"
+                      placeholder="0.0"
+                      value={autoQuoteAmount ? formatLargeNumber(autoQuoteAmount) : ""}
+                      readOnly
+                      style={{ 
+                        color: autoQuoteAmount ? "var(--text-primary)" : "var(--text-light)",
+                        cursor: "default"
+                      }}
+                      aria-label="Amount Out"
+                    />
+                    {isAutoCalculating && (
+                      <div style={{
+                        position: "absolute",
+                        right: "0.5rem",
+                        top: "50%",
+                        transform: "translateY(-50%)",
+                        fontSize: "0.75rem",
+                        color: "var(--text-light)"
+                      }}>
+                        <span className="loading-spinner" style={{ width: "12px", height: "12px", borderWidth: "2px" }} />
+                      </div>
+                    )}
+                  </div>
                   <TokenSelector
                     selectedToken={tokenTo}
                     onSelect={setTokenTo}
                     label="Select token to receive"
                   />
                 </div>
-                {formErrors.reserveOut && (
-                  <div id="reserveOut-error" style={{ color: "var(--error)", fontSize: "0.85rem", marginTop: "0.5rem" }}>
-                    {formErrors.reserveOut}
+                {autoQuoteAmount && tokenTo && (
+                  <div style={{ 
+                    fontSize: "0.75rem", 
+                    color: "var(--text-secondary)", 
+                    marginTop: "0.5rem",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.25rem"
+                  }}>
+                    <span>≈</span>
+                    <span>{formatLargeNumber(autoQuoteAmount)} {tokenTo.symbol}</span>
                   </div>
                 )}
               </div>
@@ -319,15 +383,29 @@ export default function Home() {
                     border: "1px solid var(--border-default)"
                   }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <span style={{ fontWeight: 600, color: "var(--text-secondary)", fontSize: "0.9rem" }}>
-                        {tokenFrom?.symbol} → {tokenTo?.symbol}
-                      </span>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        {tokenFrom && (
+                          <div style={getTokenIconStyle(tokenFrom.symbol, 20)}>
+                            {tokenFrom.symbol.charAt(0)}
+                          </div>
+                        )}
+                        <span style={{ fontWeight: 600, color: "var(--text-secondary)", fontSize: "0.9rem" }}>
+                          {tokenFrom?.symbol} → {tokenTo?.symbol}
+                        </span>
+                      </div>
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <span style={{ fontWeight: 600, color: "var(--text-secondary)" }}>Output Amount:</span>
-                      <span style={{ fontWeight: 700, fontSize: "1.25rem", color: "var(--success)" }}>
-                        {formatLargeNumber(quote.amountOut)} {tokenTo?.symbol}
-                      </span>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        {tokenTo && (
+                          <div style={getTokenIconStyle(tokenTo.symbol, 24)}>
+                            {tokenTo.symbol.charAt(0)}
+                          </div>
+                        )}
+                        <span style={{ fontWeight: 700, fontSize: "1.25rem", color: "var(--success)" }}>
+                          {formatLargeNumber(quote.amountOut)} {tokenTo?.symbol}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -360,11 +438,11 @@ export default function Home() {
               <button type="submit" className="btn btn-secondary btn-large" disabled={instructionLoading || !quote} style={{ width: "100%" }}>
                 {instructionLoading ? <span className="loading-spinner" /> : "🔨 Build Instruction"}
               </button>
-            </form>
+      </form>
           )}
 
           {/* Instruction Result */}
-          {instruction && (
+      {instruction && (
             <div className="result-card" style={{ marginTop: "1.5rem" }}>
               <h4 style={{ 
                 fontSize: "1rem", 
@@ -430,8 +508,8 @@ export default function Home() {
                   </div>
                 </div>
               </div>
-            </div>
-          )}
+        </div>
+      )}
 
           {/* API Endpoints */}
           <div className="feature-grid">

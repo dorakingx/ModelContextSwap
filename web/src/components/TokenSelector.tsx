@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Token, POPULAR_TOKENS } from "@/utils/tokens";
+import { getTokenIconStyle } from "@/utils/tokenIcons";
 
 interface TokenSelectorProps {
   selectedToken: Token | null;
@@ -55,18 +56,7 @@ export function TokenSelector({ selectedToken, onSelect, label, disabled }: Toke
         {selectedToken ? (
           <>
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-              <div style={{
-                width: "24px",
-                height: "24px",
-                borderRadius: "50%",
-                background: "linear-gradient(135deg, var(--primary-red) 0%, var(--accent-red) 100%)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "white",
-                fontSize: "0.75rem",
-                fontWeight: 700,
-              }}>
+              <div style={getTokenIconStyle(selectedToken.symbol, 24)}>
                 {selectedToken.symbol.charAt(0)}
               </div>
               <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>
@@ -139,18 +129,7 @@ export function TokenSelector({ selectedToken, onSelect, label, disabled }: Toke
               role="option"
               aria-selected={selectedToken?.mint === token.mint}
             >
-              <div style={{
-                width: "32px",
-                height: "32px",
-                borderRadius: "50%",
-                background: "linear-gradient(135deg, var(--primary-red) 0%, var(--accent-red) 100%)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "white",
-                fontSize: "0.875rem",
-                fontWeight: 700,
-              }}>
+              <div style={getTokenIconStyle(token.symbol, 32)}>
                 {token.symbol.charAt(0)}
               </div>
               <div style={{ flex: 1 }}>
