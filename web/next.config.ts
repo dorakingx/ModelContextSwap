@@ -5,7 +5,9 @@ const nextConfig: NextConfig = {
     externalDir: true
   },
   serverExternalPackages: ["@coral-xyz/anchor", "@solana/web3.js"],
-  transpilePackages: ["dex-ai-sdk"]
+  typescript: {
+    ignoreBuildErrors: false
+  }
 };
 
 export default nextConfig;
