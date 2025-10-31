@@ -205,45 +205,56 @@ async function buildSwapIxWithAnchor(anchor, params, options) {
   if (!dex_ai_default || typeof dex_ai_default !== "object") {
     throw new Error("IDL is invalid or undefined");
   }
-  let sanitizedIdl = JSON.parse(JSON.stringify(dex_ai_default));
+  function deepCleanIdl(obj) {
+    if (obj === null || obj === void 0) {
+      return void 0;
+    }
+    if (Array.isArray(obj)) {
+      return obj.map(deepCleanIdl).filter((item) => item !== void 0 && item !== null);
+    }
+    if (typeof obj === "object") {
+      const cleaned = {};
+      Object.keys(obj).forEach((key) => {
+        const value = obj[key];
+        if (value === void 0 || value === null) {
+          return;
+        }
+        const cleanedValue = deepCleanIdl(value);
+        if (cleanedValue !== void 0 && cleanedValue !== null) {
+          cleaned[key] = cleanedValue;
+        }
+      });
+      return cleaned;
+    }
+    return obj;
+  }
+  const cleanedIdl = deepCleanIdl(dex_ai_default);
+  let sanitizedIdl = {
+    version: cleanedIdl?.version || dex_ai_default.version || "0.1.0",
+    name: cleanedIdl?.name || dex_ai_default.name || "dex_ai",
+    instructions: cleanedIdl?.instructions || dex_ai_default.instructions || [],
+    accounts: cleanedIdl?.accounts || dex_ai_default.accounts || [],
+    metadata: {
+      address: programId.toString()
+    }
+  };
+  sanitizedIdl.metadata.address = programId.toString();
+  if (cleanedIdl?.metadata && typeof cleanedIdl.metadata === "object") {
+    Object.keys(cleanedIdl.metadata).forEach((key) => {
+      if (key === "address") {
+        return;
+      }
+      const value = cleanedIdl.metadata[key];
+      if (value !== void 0 && value !== null && value !== "") {
+        sanitizedIdl.metadata[key] = value;
+      }
+    });
+  }
+  sanitizedIdl = deepCleanIdl(sanitizedIdl);
   if (!sanitizedIdl.metadata) {
     sanitizedIdl.metadata = {};
   }
   sanitizedIdl.metadata.address = programId.toString();
-  function sanitizeIdlAddresses(obj, path = "") {
-    if (obj === null || obj === void 0) {
-      return;
-    }
-    if (typeof obj === "string") {
-      if (obj.length >= 32 && obj.length <= 44 && /^[1-9A-HJ-NP-Za-km-z]+$/.test(obj)) {
-        try {
-          const testPubkey = new PublicKey(obj);
-          const testPubkeyWithBn = testPubkey;
-          if (!("_bn" in testPubkeyWithBn) || testPubkeyWithBn._bn === void 0) {
-            console.warn(`[SDK] Invalid address found at ${path}: ${obj}, skipping`);
-          }
-        } catch {
-        }
-      }
-      return;
-    }
-    if (Array.isArray(obj)) {
-      obj.forEach((item, index) => {
-        sanitizeIdlAddresses(item, `${path}[${index}]`);
-      });
-      return;
-    }
-    if (typeof obj === "object") {
-      Object.keys(obj).forEach((key) => {
-        const newPath = path ? `${path}.${key}` : key;
-        if (key === "address" && path.includes("metadata")) {
-          return;
-        }
-        sanitizeIdlAddresses(obj[key], newPath);
-      });
-    }
-  }
-  sanitizeIdlAddresses(sanitizedIdl);
   if (typeof console !== "undefined" && console.log) {
     try {
       console.log("[SDK] IDL metadata (after sanitization):", JSON.stringify(sanitizedIdl.metadata, null, 2));
@@ -259,23 +270,56 @@ async function buildSwapIxWithAnchor(anchor, params, options) {
       );
     }
     const idlString = JSON.stringify(sanitizedIdl);
-    if (idlString.includes("undefined") || idlString.includes("null")) {
-      console.warn("[SDK] IDL contains undefined/null values, attempting to clean");
-      const cleanedIdl = JSON.parse(JSON.stringify(sanitizedIdl, (key, value) => {
+    if (idlString.includes("undefined") || idlString === "null") {
+      console.warn("[SDK] IDL contains undefined/null values, attempting final clean");
+      sanitizedIdl = JSON.parse(JSON.stringify(sanitizedIdl, (key, value) => {
         if (value === null || value === void 0) {
-          if (key.includes("address") || key.includes("pubkey") || key.includes("publicKey")) {
-            return void 0;
-          }
+          return void 0;
         }
         return value;
       }));
-      sanitizedIdl = cleanedIdl;
+      if (!sanitizedIdl.metadata) {
+        sanitizedIdl.metadata = {};
+      }
+      sanitizedIdl.metadata.address = programId.toString();
+    }
+    try {
+      const testMetadataAddress = new PublicKey(sanitizedIdl.metadata.address);
+      const testMetadataAddressWithBn = testMetadataAddress;
+      if (!("_bn" in testMetadataAddressWithBn) || testMetadataAddressWithBn._bn === void 0) {
+        throw new Error("metadata.address PublicKey is missing _bn property");
+      }
+    } catch (err) {
+      throw new Error(`IDL metadata.address is invalid: ${err.message}`);
     }
     if (typeof console !== "undefined" && console.log) {
       try {
-        console.log("[SDK] Final IDL structure:", JSON.stringify(sanitizedIdl, null, 2).substring(0, 500));
+        const idlSummary = {
+          version: sanitizedIdl.version,
+          name: sanitizedIdl.name,
+          instructions: sanitizedIdl.instructions?.length || 0,
+          accounts: sanitizedIdl.accounts?.length || 0,
+          metadata: sanitizedIdl.metadata
+        };
+        console.log("[SDK] Final IDL summary:", JSON.stringify(idlSummary, null, 2));
       } catch {
       }
+    }
+    const finalIdlString = JSON.stringify(sanitizedIdl);
+    if (finalIdlString.includes("undefined") || finalIdlString === "null") {
+      throw new Error("IDL still contains undefined/null values after cleaning");
+    }
+    if (!sanitizedIdl.metadata || !sanitizedIdl.metadata.address) {
+      throw new Error("IDL metadata.address is missing after sanitization");
+    }
+    try {
+      const testMetaAddress = new PublicKey(sanitizedIdl.metadata.address);
+      const testMetaAddressWithBn = testMetaAddress;
+      if (!("_bn" in testMetaAddressWithBn) || testMetaAddressWithBn._bn === void 0) {
+        throw new Error("metadata.address PublicKey is missing _bn property");
+      }
+    } catch (err) {
+      throw new Error(`IDL metadata.address validation failed: ${err.message}`);
     }
     program = new Program(sanitizedIdl, programId, provider);
   } catch (err) {
