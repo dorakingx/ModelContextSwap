@@ -100,15 +100,84 @@ async function main() {
     console.log("Built swap ix keys:", ix.keys.length);
     console.log("Swap instruction created successfully");
   } catch (error: any) {
-    console.error("Error in swap execution:");
-    console.error("Message:", error.message);
-    console.error("Stack:", error.stack);
+    console.error("\n" + "=".repeat(80));
+    console.error("❌ ERROR IN SWAP EXECUTION");
+    console.error("=".repeat(80));
+    
+    // Basic error information
+    console.error("\n📋 Error Message:");
+    console.error(error.message || "No error message");
+    
+    // Stack trace with enhanced formatting
+    console.error("\n📚 Stack Trace:");
+    if (error.stack) {
+      const stackLines = error.stack.split('\n');
+      stackLines.forEach((line: string, index: number) => {
+        if (index === 0) {
+          console.error(`   ${line}`);
+        } else {
+          // Highlight lines containing _bn or BN
+          if (line.includes('_bn') || line.includes('BN') || line.includes('bn')) {
+            console.error(`⚠️  ${line}`);
+          } else {
+            console.error(`   ${line}`);
+          }
+        }
+      });
+    } else {
+      console.error("   No stack trace available");
+    }
+    
+    // Error type and constructor
+    console.error("\n🔍 Error Type:");
+    console.error(`   Type: ${typeof error}`);
+    console.error(`   Constructor: ${error.constructor?.name || 'Unknown'}`);
+    console.error(`   Name: ${error.name || 'Unknown'}`);
     
     // Display detailed error information if available
     if (error.message && error.message.includes("Error Details:")) {
-      console.error("\nDetailed Error Information:");
+      console.error("\n📊 Detailed Error Information:");
+      console.error("-".repeat(80));
       console.error(error.message);
+      console.error("-".repeat(80));
     }
+    
+    // Check for _bn related errors specifically
+    if (error.message && (error.message.includes('_bn') || error.message.includes('BN'))) {
+      console.error("\n⚠️  BN/_bn Related Error Detected!");
+      console.error("   This error is related to BigNumber or PublicKey _bn property.");
+      console.error("   Possible causes:");
+      console.error("   1. BN instance was not properly initialized");
+      console.error("   2. PublicKey _bn property is missing or undefined");
+      console.error("   3. Value passed to BN constructor was undefined/null");
+      console.error("   4. Multiple versions of bn.js installed");
+    }
+    
+    // Environment information
+    console.error("\n🌍 Environment Information:");
+    console.error(`   Node.js version: ${process.version}`);
+    console.error(`   Platform: ${process.platform}`);
+    console.error(`   Architecture: ${process.arch}`);
+    
+    // Try to get dependency versions
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      
+      // Check SDK package.json
+      const sdkPackagePath = path.join(__dirname, '../sdk/package.json');
+      if (fs.existsSync(sdkPackagePath)) {
+        const sdkPackage = JSON.parse(fs.readFileSync(sdkPackagePath, 'utf8'));
+        console.error("\n📦 SDK Dependencies:");
+        console.error(`   @coral-xyz/anchor: ${sdkPackage.dependencies?.['@coral-xyz/anchor'] || 'N/A'}`);
+        console.error(`   @solana/web3.js: ${sdkPackage.dependencies?.['@solana/web3.js'] || 'N/A'}`);
+        console.error(`   bs58: ${sdkPackage.dependencies?.bs58 || 'N/A'}`);
+      }
+    } catch (e) {
+      // Ignore errors reading package.json
+    }
+    
+    console.error("\n" + "=".repeat(80));
     
     process.exit(1);
   }

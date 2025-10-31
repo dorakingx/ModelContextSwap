@@ -405,15 +405,36 @@ export async function buildSwapIxWithAnchor(
           publicKey: pk.toString(),
           has_bn: pkWithBn._bn !== undefined,
           _bn_type: typeof pkWithBn._bn,
+          _bn_value: pkWithBn._bn ? pkWithBn._bn.toString() : 'undefined',
           isPublicKey: pk instanceof PublicKey,
         };
       });
       
-      throw new Error(
-        `Anchor swapMethod.accounts() failed: ${err.message || 'Unknown error'}\n` +
-        `Account details: ${JSON.stringify(accountDetails, null, 2)}\n` +
-        `Error stack: ${err.stack || 'No stack trace'}`
-      );
+      // Enhanced stack trace with _bn markers
+      let enhancedStack = err.stack || 'No stack trace';
+      if (err.stack) {
+        enhancedStack = err.stack.split('\n').map((line: string) => {
+          if (line.includes('_bn') || line.includes('BN') || line.includes('bn')) {
+            return `⚠️  ${line}`;
+          }
+          return line;
+        }).join('\n');
+      }
+      
+      const errorMsg = [
+        `Anchor swapMethod.accounts() failed: ${err.message || 'Unknown error'}`,
+        ``,
+        `Error Type: ${err.constructor?.name || typeof err}`,
+        `Error Name: ${err.name || 'Unknown'}`,
+        ``,
+        `Account Details:`,
+        JSON.stringify(accountDetails, null, 2),
+        ``,
+        `Stack Trace:`,
+        enhancedStack,
+      ].join('\n');
+      
+      throw new Error(errorMsg);
     }
 
     if (!accountsBuilder) {
@@ -430,10 +451,26 @@ export async function buildSwapIxWithAnchor(
   } catch (err: any) {
     // Enhanced error message with full context and detailed diagnostics
     const errorMessage = err.message || "Unknown error";
+    
+    // Extract stack trace with enhanced information
+    let enhancedStack = err.stack || "No stack trace available";
+    if (err.stack) {
+      // Add markers for _bn related errors
+      enhancedStack = err.stack.split('\n').map((line: string) => {
+        if (line.includes('_bn') || line.includes('BN') || line.includes('bn')) {
+          return `⚠️  ${line}`;
+        }
+        return line;
+      }).join('\n');
+    }
+    
     const errorDetails: any = {
       message: errorMessage,
-      stack: err.stack,
+      stack: enhancedStack,
+      originalStack: err.stack,
       step: "instruction_building",
+      errorType: err.constructor?.name || typeof err,
+      errorName: err.name || "Unknown",
       params: {
         programId: params.programId?.toString(),
         pool: params.pool?.toString(),
