@@ -303,6 +303,20 @@ a {
   color: var(--error);
 }
 
+.status-checking {
+  background: rgba(255, 193, 7, 0.1);
+  color: #F59E0B;
+}
+
+.mcp-card {
+  background: linear-gradient(135deg, var(--card-bg) 0%, rgba(230, 57, 70, 0.02) 100%);
+  border: 2px solid rgba(230, 57, 70, 0.15);
+}
+
+.mcp-card:hover {
+  border-color: rgba(230, 57, 70, 0.3);
+}
+
 .icon-dot {
   width: 8px;
   height: 8px;

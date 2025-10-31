@@ -35,7 +35,7 @@ export default function Home() {
     instruction 
   } = useDexApi();
   
-  const { status: mcpStatus, error: mcpError } = useMcpServer();
+  const { status: mcpStatus, error: mcpError, retry: retryMcpConnection } = useMcpServer();
   const { publicKey, connected, sendTransaction } = useWallet();
   const { connection } = useConnection();
   const [swapLoading, setSwapLoading] = useState(false);
@@ -551,7 +551,41 @@ export default function Home() {
             flexWrap: "wrap",
             gap: "1rem"
           }}>
-            <h1 style={{ margin: 0 }}>Model Context Swap</h1>
+            <div style={{ display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
+              <h1 style={{ margin: 0 }}>Model Context Swap</h1>
+              {/* MCP Status Badge in Header */}
+              <div style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem",
+                padding: "0.5rem 1rem",
+                background: mcpStatus === "active" 
+                  ? "rgba(16, 185, 129, 0.1)" 
+                  : mcpStatus === "checking"
+                  ? "rgba(255, 193, 7, 0.1)"
+                  : "rgba(239, 68, 68, 0.1)",
+                border: `1px solid ${mcpStatus === "active" 
+                  ? "rgba(16, 185, 129, 0.3)" 
+                  : mcpStatus === "checking"
+                  ? "rgba(255, 193, 7, 0.3)"
+                  : "rgba(239, 68, 68, 0.3)"}`,
+                borderRadius: "20px",
+                fontSize: "0.75rem",
+                fontWeight: 600,
+                color: mcpStatus === "active" 
+                  ? "var(--success)" 
+                  : mcpStatus === "checking"
+                  ? "#F59E0B"
+                  : "var(--error)"
+              }}>
+                {mcpStatus === "checking" && (
+                  <span className="loading-spinner" style={{ width: "10px", height: "10px", borderWidth: "2px" }}></span>
+                )}
+                {mcpStatus === "active" && <span className="icon-dot"></span>}
+                {mcpStatus === "inactive" && <span className="icon-dot"></span>}
+                <span>MCP {mcpStatus === "active" ? "Active" : mcpStatus === "checking" ? "Checking" : "Offline"}</span>
+              </div>
+            </div>
             <WalletButton />
           </div>
           {connected && publicKey && (
@@ -571,7 +605,25 @@ export default function Home() {
               <span>Wallet Connected: {publicKey.toString().slice(0, 8)}...{publicKey.toString().slice(-8)}</span>
             </div>
           )}
-          <p>AI agent-friendly DEX on Solana with Model Context Protocol integration</p>
+          <p style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+            <span>AI agent-friendly DEX on Solana with</span>
+            <span style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "0.25rem",
+              padding: "0.25rem 0.75rem",
+              background: "linear-gradient(135deg, rgba(230, 57, 70, 0.1) 0%, rgba(230, 57, 70, 0.05) 100%)",
+              border: "1px solid rgba(230, 57, 70, 0.2)",
+              borderRadius: "12px",
+              fontWeight: 600,
+              color: "var(--primary-red)",
+              fontSize: "0.9rem"
+            }}>
+              <span>🤖</span>
+              <span>Model Context Protocol</span>
+            </span>
+            <span>integration</span>
+          </p>
           <div className="cta-row">
             <button className="btn btn-primary" onClick={() => document.getElementById('swap-section')?.scrollIntoView({ behavior: 'smooth' })}>
               Start Swapping
@@ -1077,37 +1129,123 @@ export default function Home() {
         </div>
 
         {/* MCP Server Section */}
-        <div className="card" style={{ marginTop: "2rem" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1rem" }}>
-            <h2 style={{ fontSize: "1.5rem", fontWeight: 700, color: "var(--text-primary)" }}>
-              MCP Server
-            </h2>
-            <div className={`status-badge ${mcpStatus === "active" ? "status-active" : "status-inactive"}`}>
-              <span className="icon-dot"></span>
-              {mcpStatus === "checking" && "Checking..."}
-              {mcpStatus === "active" && "Active"}
-              {mcpStatus === "inactive" && "Inactive"}
-            </div>
+        <div className="card mcp-card" style={{ marginTop: "2rem", position: "relative", overflow: "hidden" }}>
+          {/* MCP Badge */}
+          <div style={{
+            position: "absolute",
+            top: "1rem",
+            right: "1rem",
+            background: "linear-gradient(135deg, var(--primary-red) 0%, var(--accent-red) 100%)",
+            color: "white",
+            padding: "0.5rem 1rem",
+            borderRadius: "20px",
+            fontSize: "0.75rem",
+            fontWeight: 700,
+            letterSpacing: "0.05em",
+            textTransform: "uppercase",
+            boxShadow: "0 2px 8px rgba(230, 57, 70, 0.3)",
+            zIndex: 1
+          }}>
+            Powered by MCP
           </div>
-          <p style={{ fontSize: "0.95rem", color: "var(--text-secondary)", marginBottom: "2rem" }}>
-            Model Context Protocol server for AI agent integration
-          </p>
 
-          {mcpError && (
-            <div className="error-card" style={{ marginBottom: "2rem" }}>
-              <div style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem" }}>
-                <span style={{ fontSize: "1.25rem" }}>⚠️</span>
-                <div>
-                  <div style={{ fontWeight: 600, color: "var(--text-primary)", marginBottom: "0.25rem" }}>
-                    Connection Error
-                  </div>
-                  <div style={{ color: "var(--text-secondary)", fontSize: "0.9rem" }}>
-                    {mcpError}
-                  </div>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: "1rem", marginBottom: "1.5rem" }}>
+            {/* MCP Icon */}
+            <div style={{
+              width: "64px",
+              height: "64px",
+              borderRadius: "16px",
+              background: "linear-gradient(135deg, rgba(230, 57, 70, 0.1) 0%, rgba(230, 57, 70, 0.05) 100%)",
+              border: "2px solid rgba(230, 57, 70, 0.2)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0
+            }}>
+              <span style={{ fontSize: "2rem" }}>🤖</span>
+            </div>
+
+            <div style={{ flex: 1 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.5rem" }}>
+                <h2 style={{ fontSize: "1.75rem", fontWeight: 700, color: "var(--text-primary)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <span>MCP Server</span>
+                  {mcpStatus === "active" && (
+                    <span style={{ fontSize: "1rem", color: "var(--success)" }}>✓</span>
+                  )}
+                </h2>
+                <div className={`status-badge ${mcpStatus === "active" ? "status-active" : mcpStatus === "checking" ? "status-checking" : "status-inactive"}`}>
+                  {mcpStatus === "checking" && (
+                    <>
+                      <span className="loading-spinner" style={{ width: "12px", height: "12px", borderWidth: "2px" }}></span>
+                      Checking...
+                    </>
+                  )}
+                  {mcpStatus === "active" && (
+                    <>
+                      <span className="icon-dot"></span>
+                      Active
+                    </>
+                  )}
+                  {mcpStatus === "inactive" && (
+                    <>
+                      <span className="icon-dot"></span>
+                      Inactive
+                    </>
+                  )}
                 </div>
               </div>
-        </div>
-      )}
+              <p style={{ fontSize: "1rem", color: "var(--text-secondary)", lineHeight: "1.6" }}>
+                Model Context Protocol server enabling AI agents to interact with Solana DEX operations. 
+                Provides deterministic quotes and instruction building capabilities.
+              </p>
+            </div>
+          </div>
+
+          {mcpError && (
+            <div className="error-card" style={{ marginBottom: "2rem", position: "relative" }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem" }}>
+                <span style={{ fontSize: "1.5rem" }}>⚠️</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, color: "var(--text-primary)", marginBottom: "0.5rem", fontSize: "1rem" }}>
+                    Connection Error
+                  </div>
+                  <div style={{ color: "var(--text-secondary)", fontSize: "0.9rem", marginBottom: "1rem", lineHeight: "1.6" }}>
+                    {mcpError}
+                  </div>
+                  <button
+                    onClick={retryMcpConnection}
+                    className="btn btn-secondary"
+                    style={{ fontSize: "0.875rem", padding: "0.5rem 1rem" }}
+                  >
+                    🔄 Retry Connection
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {mcpStatus === "active" && (
+            <div style={{
+              background: "rgba(16, 185, 129, 0.1)",
+              border: "1px solid rgba(16, 185, 129, 0.3)",
+              borderRadius: "12px",
+              padding: "1rem",
+              marginBottom: "2rem",
+              display: "flex",
+              alignItems: "center",
+              gap: "0.75rem"
+            }}>
+              <span style={{ fontSize: "1.25rem" }}>✅</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600, color: "var(--success)", marginBottom: "0.25rem" }}>
+                  MCP Server Connected
+                </div>
+                <div style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>
+                  Ready to process AI agent requests via Model Context Protocol
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* API Endpoints */}
           <div className="feature-grid">
