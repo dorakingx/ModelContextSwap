@@ -217,20 +217,46 @@ export default function Home() {
     setSwapTxSignature(null);
 
     try {
+      // Validate token mints
+      if (!tokenFrom.mint || !tokenTo.mint) {
+        throw new Error("Token mint addresses are missing");
+      }
+
       // Convert amountIn to smallest unit
       const amountInConverted = convertToSmallestUnit(amountIn, tokenFrom.decimals);
       const minAmountOut = quote.amountOut;
 
+      // Validate and create PublicKeys for token mints
+      let tokenFromMint: PublicKey;
+      let tokenToMint: PublicKey;
+      
+      try {
+        tokenFromMint = new PublicKey(tokenFrom.mint);
+      } catch (err) {
+        throw new Error(`Invalid tokenFrom mint address: ${tokenFrom.mint}`);
+      }
+      
+      try {
+        tokenToMint = new PublicKey(tokenTo.mint);
+      } catch (err) {
+        throw new Error(`Invalid tokenTo mint address: ${tokenTo.mint}`);
+      }
+
       // Note: These are placeholder values - in production, these should be fetched from
       // the actual DEX protocol or pool contracts using the token mints
       // For now, we use simplified derivation that may not work with actual protocol
-      const programId = new PublicKey("Dex111111111111111111111111111111111111111");
+      let programId: PublicKey;
+      try {
+        programId = new PublicKey("Dex111111111111111111111111111111111111111");
+      } catch (err) {
+        throw new Error("Invalid program ID");
+      }
       
       // Derive pool address from token mints
       const poolSeed = Buffer.concat([
         Buffer.from("pool"),
-        new PublicKey(tokenFrom.mint).toBuffer().slice(0, 8),
-        new PublicKey(tokenTo.mint).toBuffer().slice(0, 8),
+        tokenFromMint.toBuffer().slice(0, 8),
+        tokenToMint.toBuffer().slice(0, 8),
       ]);
       const [pool] = PublicKey.findProgramAddressSync([poolSeed], programId);
       
@@ -240,14 +266,14 @@ export default function Home() {
       const userSourceSeed = Buffer.concat([
         Buffer.from("token"),
         user.toBuffer(),
-        new PublicKey(tokenFrom.mint).toBuffer().slice(0, 8),
+        tokenFromMint.toBuffer().slice(0, 8),
       ]);
       const [userSource] = PublicKey.findProgramAddressSync([userSourceSeed], programId);
       
       const userDestinationSeed = Buffer.concat([
         Buffer.from("token"),
         user.toBuffer(),
-        new PublicKey(tokenTo.mint).toBuffer().slice(0, 8),
+        tokenToMint.toBuffer().slice(0, 8),
       ]);
       const [userDestination] = PublicKey.findProgramAddressSync([userDestinationSeed], programId);
       
@@ -255,18 +281,23 @@ export default function Home() {
       const vaultASeed = Buffer.concat([
         Buffer.from("vault"),
         pool.toBuffer(),
-        new PublicKey(tokenFrom.mint).toBuffer().slice(0, 8),
+        tokenFromMint.toBuffer().slice(0, 8),
       ]);
       const [vaultA] = PublicKey.findProgramAddressSync([vaultASeed], programId);
       
       const vaultBSeed = Buffer.concat([
         Buffer.from("vault"),
         pool.toBuffer(),
-        new PublicKey(tokenTo.mint).toBuffer().slice(0, 8),
+        tokenToMint.toBuffer().slice(0, 8),
       ]);
       const [vaultB] = PublicKey.findProgramAddressSync([vaultBSeed], programId);
       
-      const tokenProgram = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+      let tokenProgram: PublicKey;
+      try {
+        tokenProgram = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+      } catch (err) {
+        throw new Error("Invalid token program ID");
+      }
 
       // Build instruction
       const instructionParams: SwapInstructionRequest = {
@@ -291,7 +322,9 @@ export default function Home() {
 
       if (!ixRes.ok) {
         const errorData = await ixRes.json();
-        throw new Error(errorData.error || "Failed to build instruction");
+        const errorMessage = errorData.error || "Failed to build instruction";
+        const fieldInfo = errorData.details?.field ? ` (field: ${errorData.details.field})` : "";
+        throw new Error(`${errorMessage}${fieldInfo}`);
       }
 
       const instructionData = await ixRes.json();

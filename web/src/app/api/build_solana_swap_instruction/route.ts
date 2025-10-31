@@ -1,8 +1,9 @@
 import { NextRequest } from "next/server";
 import { PublicKey } from "@solana/web3.js";
-import { buildSwapIx } from "dex-ai-sdk";
+import { buildSwapIxWithAnchor } from "dex-ai-sdk";
 import { validateSwapInstructionRequest } from "@/utils/validation";
 import { ApiError, ValidationError } from "@/types";
+import anchor from "@coral-xyz/anchor";
 
 // Unified error response helper
 function createErrorResponse(error: unknown, statusCode: number = 400): Response {
@@ -49,20 +50,85 @@ export async function POST(req: NextRequest) {
     const validatedParams = validateSwapInstructionRequest(body);
 
     // Build instruction with validated PublicKeys
+    // Validate each PublicKey individually to provide better error messages
+    let programId: PublicKey;
+    let pool: PublicKey;
+    let user: PublicKey;
+    let userSource: PublicKey;
+    let userDestination: PublicKey;
+    let vaultA: PublicKey;
+    let vaultB: PublicKey;
+    let tokenProgram: PublicKey;
+
+    try {
+      programId = new PublicKey(validatedParams.programId);
+    } catch (err) {
+      throw new ValidationError(`Invalid programId: ${validatedParams.programId}`, "programId");
+    }
+
+    try {
+      pool = new PublicKey(validatedParams.pool);
+    } catch (err) {
+      throw new ValidationError(`Invalid pool: ${validatedParams.pool}`, "pool");
+    }
+
+    try {
+      user = new PublicKey(validatedParams.user);
+    } catch (err) {
+      throw new ValidationError(`Invalid user: ${validatedParams.user}`, "user");
+    }
+
+    try {
+      userSource = new PublicKey(validatedParams.userSource);
+    } catch (err) {
+      throw new ValidationError(`Invalid userSource: ${validatedParams.userSource}`, "userSource");
+    }
+
+    try {
+      userDestination = new PublicKey(validatedParams.userDestination);
+    } catch (err) {
+      throw new ValidationError(`Invalid userDestination: ${validatedParams.userDestination}`, "userDestination");
+    }
+
+    try {
+      vaultA = new PublicKey(validatedParams.vaultA);
+    } catch (err) {
+      throw new ValidationError(`Invalid vaultA: ${validatedParams.vaultA}`, "vaultA");
+    }
+
+    try {
+      vaultB = new PublicKey(validatedParams.vaultB);
+    } catch (err) {
+      throw new ValidationError(`Invalid vaultB: ${validatedParams.vaultB}`, "vaultB");
+    }
+
+    try {
+      tokenProgram = new PublicKey(validatedParams.tokenProgram);
+    } catch (err) {
+      throw new ValidationError(`Invalid tokenProgram: ${validatedParams.tokenProgram}`, "tokenProgram");
+    }
+
     const params = {
-      programId: new PublicKey(validatedParams.programId),
-      pool: new PublicKey(validatedParams.pool),
-      user: new PublicKey(validatedParams.user),
-      userSource: new PublicKey(validatedParams.userSource),
-      userDestination: new PublicKey(validatedParams.userDestination),
-      vaultA: new PublicKey(validatedParams.vaultA),
-      vaultB: new PublicKey(validatedParams.vaultB),
-      tokenProgram: new PublicKey(validatedParams.tokenProgram),
+      programId,
+      pool,
+      user,
+      userSource,
+      userDestination,
+      vaultA,
+      vaultB,
+      tokenProgram,
       amountIn: validatedParams.amountIn,
       minAmountOut: validatedParams.minAmountOut,
     };
 
-    const ix = await buildSwapIx(params);
+    // Use buildSwapIxWithAnchor which requires Anchor
+    const anchorExports = {
+      BN: anchor.BN,
+      Program: anchor.Program,
+      AnchorProvider: anchor.AnchorProvider,
+    };
+    
+    const ix = await buildSwapIxWithAnchor(anchorExports, params);
 
     return Response.json({
       programId: ix.programId.toString(),
