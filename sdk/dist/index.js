@@ -173,16 +173,6 @@ async function buildSwapIxWithAnchor(anchor, params, options) {
   if (!provider) {
     throw new Error("AnchorProvider.local() returned undefined or null");
   }
-  const providerConnection = provider.connection;
-  const providerWallet = provider.wallet;
-  const providerOpts = provider.opts;
-  const providerPublicKey = provider.publicKey;
-  provider = {
-    connection: providerConnection,
-    wallet: providerWallet,
-    opts: providerOpts,
-    publicKey: providerPublicKey || providerWallet?.publicKey
-  };
   if (!provider.connection) {
     throw new Error("Provider is missing connection property");
   }

@@ -239,21 +239,13 @@ export async function buildSwapIxWithAnchor(
     throw new Error("AnchorProvider.local() returned undefined or null");
   }
   
-  // CRITICAL: Ensure provider is a plain object and not a proxy or class instance
-  // that might lose properties during serialization in serverless environments
-  // Recreate provider as a plain object to prevent any serialization issues
-  const providerConnection = provider.connection;
-  const providerWallet = provider.wallet;
-  const providerOpts = provider.opts;
-  const providerPublicKey = provider.publicKey;
+  // CRITICAL: Do NOT recreate provider as a plain object
+  // Anchor's Program constructor expects an AnchorProvider instance, not a plain object
+  // Recreating it as a plain object causes "Expected Uint8Array" errors
+  // Instead, ensure the provider's properties are valid without recreating the object
   
-  // Create a fresh provider object to ensure all properties are properly set
-  provider = {
-    connection: providerConnection,
-    wallet: providerWallet,
-    opts: providerOpts,
-    publicKey: providerPublicKey || providerWallet?.publicKey,
-  } as any;
+  // Validate provider is an AnchorProvider instance (or at least has the required structure)
+  // but don't recreate it as a plain object
   
   // Validate provider has required properties
   if (!provider.connection) {
