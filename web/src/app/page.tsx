@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import "./globals.css";
 import { useDexApi } from "@/hooks/useDexApi";
 import { useMcpServer } from "@/hooks/useMcpServer";
+import { useMcpTools } from "@/hooks/useMcpTools";
 import { SwapParams, SwapInstructionRequest } from "@/types";
 import { formatLargeNumber } from "@/utils/validation";
 import { TokenSelector } from "@/components/TokenSelector";
@@ -37,6 +38,23 @@ export default function Home() {
   } = useDexApi();
   
   const { status: mcpStatus, error: mcpError, retry: retryMcpConnection } = useMcpServer();
+  const {
+    getQuoteViaMcp,
+    buildIxViaMcp,
+    quoteLoading: mcpQuoteLoading,
+    instructionLoading: mcpInstructionLoading,
+    error: mcpToolsError,
+    quote: mcpQuote,
+    instruction: mcpInstruction
+  } = useMcpTools();
+  
+  // Use MCP tools when MCP server is active, otherwise fallback to API routes
+  const [useMcpMode, setUseMcpMode] = useState(true); // Default to MCP mode when available
+  const effectiveQuoteLoading = useMcpMode && mcpStatus === "active" ? mcpQuoteLoading : quoteLoading;
+  const effectiveInstructionLoading = useMcpMode && mcpStatus === "active" ? mcpInstructionLoading : instructionLoading;
+  const effectiveError = useMcpMode && mcpStatus === "active" ? mcpToolsError : error;
+  const effectiveQuote = useMcpMode && mcpStatus === "active" ? mcpQuote : quote;
+  const effectiveInstruction = useMcpMode && mcpStatus === "active" ? mcpInstruction : instruction;
   const { publicKey, connected, sendTransaction } = useWallet();
   const { connection } = useConnection();
   const [swapLoading, setSwapLoading] = useState(false);
@@ -85,6 +103,26 @@ export default function Home() {
   // Auto-calculate quote function (doesn't reset quote on error)
   const autoCalculateQuote = useCallback(async (params: { amountIn: string; reserveIn: string; reserveOut: string; feeBps: string }) => {
     try {
+      // Try MCP server first if available, otherwise fallback to API route
+      if (useMcpMode && mcpStatus === "active") {
+        try {
+          await getQuoteViaMcp({
+            amountIn: params.amountIn,
+            reserveIn: params.reserveIn,
+            reserveOut: params.reserveOut,
+            feeBps: params.feeBps,
+          });
+          // mcpQuote will be updated by the hook
+          if (mcpQuote?.amountOut) {
+            setAutoQuoteAmount(mcpQuote.amountOut);
+            return mcpQuote.amountOut;
+          }
+        } catch (err) {
+          // Fallback to API route if MCP fails
+        }
+      }
+      
+      // Fallback to API route
       const res = await fetch(`/api/get_dex_quote`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -104,7 +142,7 @@ export default function Home() {
       // Silently fail for auto-calculation
       return null;
     }
-  }, []);
+  }, [useMcpMode, mcpStatus, getQuoteViaMcp, mcpQuote]);
 
   // Auto-calculate quote when amount changes
   useEffect(() => {
@@ -153,10 +191,11 @@ export default function Home() {
 
   // Update auto quote amount when quote changes (from manual quote fetch)
   useEffect(() => {
-    if (quote && quote.amountOut) {
-      setAutoQuoteAmount(quote.amountOut);
+    const currentQuote = useMcpMode && mcpStatus === "active" ? mcpQuote : quote;
+    if (currentQuote && currentQuote.amountOut) {
+      setAutoQuoteAmount(currentQuote.amountOut);
     }
-  }, [quote]);
+  }, [quote, mcpQuote, useMcpMode, mcpStatus]);
 
   const handleGetQuote = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -180,7 +219,12 @@ export default function Home() {
       amountInConverted = convertToSmallestUnit(amountIn, tokenFrom.decimals);
     }
 
-    await getQuote({ amountIn: amountInConverted, reserveIn, reserveOut, feeBps });
+    // Use MCP server if available and enabled, otherwise use API route
+    if (useMcpMode && mcpStatus === "active") {
+      await getQuoteViaMcp({ amountIn: amountInConverted, reserveIn, reserveOut, feeBps });
+    } else {
+      await getQuote({ amountIn: amountInConverted, reserveIn, reserveOut, feeBps });
+    }
   };
 
   const handleBuildInstruction = async (e: React.FormEvent) => {
@@ -234,14 +278,17 @@ export default function Home() {
         throw new Error("Token mint addresses are missing");
       }
 
+      // Use effective quote (MCP or API route)
+      const currentQuote = useMcpMode && mcpStatus === "active" ? mcpQuote : quote;
+      
       // Validate quote.amountOut is defined
-      if (!quote || quote.amountOut === undefined || quote.amountOut === null) {
+      if (!currentQuote || currentQuote.amountOut === undefined || currentQuote.amountOut === null) {
         throw new Error("Quote amountOut is missing. Please get a quote first.");
       }
 
       // Convert amountIn to smallest unit
       const amountInConverted = convertToSmallestUnit(amountIn, tokenFrom.decimals);
-      const minAmountOut = quote.amountOut;
+      const minAmountOut = currentQuote.amountOut;
 
       // Validate and create PublicKeys for token mints using assertPubkey
       const tokenFromMint = assertPubkey("tokenFrom.mint", tokenFrom.mint);
@@ -395,21 +442,30 @@ export default function Home() {
         });
       }
 
-      // Build instruction via API
-      const ixRes = await fetch(`/api/build_solana_swap_instruction`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(instructionParams),
-      });
+      // Build instruction via MCP server if available, otherwise via API route
+      let instructionData;
+      if (useMcpMode && mcpStatus === "active") {
+        await buildIxViaMcp(instructionParams);
+        if (!mcpInstruction) {
+          throw new Error("Failed to build instruction via MCP server");
+        }
+        instructionData = mcpInstruction;
+      } else {
+        const ixRes = await fetch(`/api/build_solana_swap_instruction`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(instructionParams),
+        });
 
-      if (!ixRes.ok) {
-        const errorData = await ixRes.json();
-        const errorMessage = errorData.error || "Failed to build instruction";
-        const fieldInfo = errorData.details?.field ? ` (field: ${errorData.details.field})` : "";
-        throw new Error(`${errorMessage}${fieldInfo}`);
+        if (!ixRes.ok) {
+          const errorData = await ixRes.json();
+          const errorMessage = errorData.error || "Failed to build instruction";
+          const fieldInfo = errorData.details?.field ? ` (field: ${errorData.details.field})` : "";
+          throw new Error(`${errorMessage}${fieldInfo}`);
+        }
+
+        instructionData = await ixRes.json();
       }
-
-      const instructionData = await ixRes.json();
 
       // Build transaction
       const transaction = new Transaction();
@@ -502,9 +558,10 @@ export default function Home() {
       }
       
       // Log context at time of error
+      const currentQuote = useMcpMode && mcpStatus === "active" ? mcpQuote : quote;
       console.error("Context at error:", {
-        hasQuote: !!quote,
-        quoteAmountOut: quote?.amountOut?.toString(),
+        hasQuote: !!currentQuote,
+        quoteAmountOut: currentQuote?.amountOut?.toString(),
         hasTokenFrom: !!tokenFrom,
         tokenFromMint: tokenFrom?.mint,
         hasTokenTo: !!tokenTo,
@@ -512,6 +569,8 @@ export default function Home() {
         amountIn,
         connected,
         publicKey: publicKey?.toString(),
+        useMcpMode,
+        mcpStatus,
       });
       
       setSwapTxSignature(null);
@@ -651,11 +710,55 @@ export default function Home() {
           <p style={{ 
             fontSize: "1rem", 
             color: "var(--text-secondary)",
-            marginBottom: "2rem",
+            marginBottom: "1rem",
             textAlign: "center"
           }}>
             Get deterministic quotes and build swap instructions
           </p>
+          
+          {/* MCP Mode Toggle */}
+          {mcpStatus === "active" && (
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "0.75rem",
+              marginBottom: "2rem",
+              padding: "0.75rem 1rem",
+              background: "var(--bg-secondary)",
+              borderRadius: "12px",
+              border: "1px solid var(--border-default)"
+            }}>
+              <span style={{ fontSize: "0.875rem", color: "var(--text-secondary)", fontWeight: 500 }}>
+                Use MCP Server:
+              </span>
+              <label style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem",
+                cursor: "pointer",
+                fontSize: "0.875rem",
+                fontWeight: 600,
+                color: useMcpMode ? "var(--success)" : "var(--text-secondary)"
+              }}>
+                <input
+                  type="checkbox"
+                  checked={useMcpMode}
+                  onChange={(e) => setUseMcpMode(e.target.checked)}
+                  style={{
+                    width: "18px",
+                    height: "18px",
+                    cursor: "pointer",
+                    accentColor: "var(--primary-red)"
+                  }}
+                />
+                <span style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
+                  <span>🤖</span>
+                  <span>Enabled</span>
+                </span>
+              </label>
+            </div>
+          )}
 
           {/* Get Quote Form */}
           <form onSubmit={handleGetQuote}>
@@ -860,43 +963,75 @@ export default function Home() {
                 </div>
               </div>
 
-              <button type="submit" className="btn btn-primary btn-large" disabled={quoteLoading} style={{ width: "100%" }}>
-                {quoteLoading ? <span className="loading-spinner" /> : "↗️ Get Quote"}
+              <button type="submit" className="btn btn-primary btn-large" disabled={effectiveQuoteLoading} style={{ width: "100%" }}>
+                {effectiveQuoteLoading ? (
+                  <>
+                    <span className="loading-spinner" />
+                    <span style={{ marginLeft: "0.5rem" }}>
+                      {useMcpMode && mcpStatus === "active" ? "Getting quote via MCP..." : "Getting quote..."}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    {useMcpMode && mcpStatus === "active" && <span>🤖 </span>}
+                    <span>↗️ Get Quote</span>
+                  </>
+                )}
               </button>
             </div>
           </form>
 
           {/* Quote Result */}
-          {error && (
+          {effectiveError && (
             <div className="error-card">
               <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
                 <span style={{ fontSize: "1.5rem" }}>⚠️</span>
                 <div>
                   <div style={{ fontWeight: 600, color: "var(--text-primary)", marginBottom: "0.25rem" }}>
-                    {error.code || "Error"}
+                    {effectiveError.code || "Error"}
+                    {useMcpMode && mcpStatus === "active" && (
+                      <span style={{ marginLeft: "0.5rem", fontSize: "0.75rem", color: "var(--text-light)" }}>
+                        (via MCP)
+                      </span>
+                    )}
                   </div>
                   <div style={{ color: "var(--text-secondary)", fontSize: "0.9rem" }}>
-                    {error.error}
+                    {effectiveError.error}
                   </div>
-                  {error.details?.field && (
+                  {effectiveError.details?.field && (
                     <div style={{ color: "var(--text-light)", fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                      Field: {error.details.field}
+                      Field: {effectiveError.details.field}
                     </div>
                   )}
                 </div>
               </div>
             </div>
           )}
-          {quote && (
+          {effectiveQuote && (
             <div className="result-card">
               <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
                 <span style={{ fontSize: "1.5rem" }}>✓</span>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, color: "var(--text-primary)", marginBottom: "0.25rem" }}>
-                    Swap Quote
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.25rem" }}>
+                    <div style={{ fontWeight: 600, color: "var(--text-primary)" }}>
+                      Swap Quote
+                    </div>
+                    {useMcpMode && mcpStatus === "active" && (
+                      <div style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.25rem",
+                        fontSize: "0.75rem",
+                        color: "var(--primary-red)",
+                        fontWeight: 600
+                      }}>
+                        <span>🤖</span>
+                        <span>via MCP</span>
+                      </div>
+                    )}
                   </div>
                   <div style={{ color: "var(--text-secondary)", fontSize: "0.95rem", marginBottom: "0.75rem" }}>
-                    Based on constant product formula (with {quote.feeBps || feeBps}bps fee)
+                    Based on constant product formula (with {effectiveQuote.feeBps || feeBps}bps fee)
                   </div>
                   <div style={{ 
                     display: "flex", 
@@ -928,7 +1063,7 @@ export default function Home() {
                           </div>
                         )}
                         <span style={{ fontWeight: 700, fontSize: "1.25rem", color: "var(--success)" }}>
-                          {tokenTo ? formatTokenAmount(quote.amountOut, tokenTo.decimals) : formatLargeNumber(quote.amountOut)} {tokenTo?.symbol}
+                          {tokenTo ? formatTokenAmount(effectiveQuote.amountOut, tokenTo.decimals) : formatLargeNumber(effectiveQuote.amountOut)} {tokenTo?.symbol}
                         </span>
                       </div>
                     </div>
@@ -942,17 +1077,22 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={handleSwap}
-                    disabled={swapLoading || !quote}
+                    disabled={swapLoading || !effectiveQuote}
                     className="btn btn-primary btn-large"
                     style={{ width: "100%" }}
                   >
                     {swapLoading ? (
                       <>
                         <span className="loading-spinner" />
-                        <span>Swapping...</span>
+                        <span>
+                          {useMcpMode && mcpStatus === "active" ? "Swapping via MCP..." : "Swapping..."}
+                        </span>
                       </>
                     ) : (
-                      `🔄 Swap ${tokenFrom?.symbol} → ${tokenTo?.symbol}`
+                      <>
+                        {useMcpMode && mcpStatus === "active" && <span>🤖 </span>}
+                        <span>🔄 Swap {tokenFrom?.symbol} → {tokenTo?.symbol}</span>
+                      </>
                     )}
                   </button>
                   {swapTxSignature && (
@@ -1067,7 +1207,7 @@ export default function Home() {
           <div className="divider" />
 
           {/* Build Instruction Form */}
-          {quote && (
+          {effectiveQuote && (
             <form onSubmit={handleBuildInstruction}>
               <h3 style={{ 
                 fontSize: "1.15rem", 
@@ -1086,14 +1226,26 @@ export default function Home() {
               }}>
                 Generate a transaction instruction for executing the swap
               </p>
-              <button type="submit" className="btn btn-secondary btn-large" disabled={instructionLoading || !quote} style={{ width: "100%" }}>
-                {instructionLoading ? <span className="loading-spinner" /> : "🔨 Build Instruction"}
+              <button type="submit" className="btn btn-secondary btn-large" disabled={effectiveInstructionLoading || !effectiveQuote} style={{ width: "100%" }}>
+                {effectiveInstructionLoading ? (
+                  <>
+                    <span className="loading-spinner" />
+                    <span style={{ marginLeft: "0.5rem" }}>
+                      {useMcpMode && mcpStatus === "active" ? "Building via MCP..." : "Building..."}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    {useMcpMode && mcpStatus === "active" && <span>🤖 </span>}
+                    <span>🔨 Build Instruction</span>
+                  </>
+                )}
               </button>
       </form>
           )}
 
           {/* Instruction Result */}
-      {instruction && (
+      {effectiveInstruction && (
             <div className="result-card" style={{ marginTop: "1.5rem" }}>
               <h4 style={{ 
                 fontSize: "1rem", 
@@ -1102,10 +1254,25 @@ export default function Home() {
                 marginBottom: "1rem",
                 display: "flex",
                 alignItems: "center",
-                gap: "0.5rem"
+                justifyContent: "space-between"
               }}>
-                <span>✓</span>
-                Instruction Built Successfully
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <span>✓</span>
+                  <span>Instruction Built Successfully</span>
+                </div>
+                {useMcpMode && mcpStatus === "active" && (
+                  <div style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.25rem",
+                    fontSize: "0.75rem",
+                    color: "var(--primary-red)",
+                    fontWeight: 600
+                  }}>
+                    <span>🤖</span>
+                    <span>via MCP</span>
+                  </div>
+                )}
               </h4>
               <div style={{ 
                 background: "var(--bg-secondary)", 
@@ -1122,7 +1289,7 @@ export default function Home() {
                   wordBreak: "break-all",
                   fontFamily: "var(--font-geist-mono)"
                 }}>
-                  {JSON.stringify(instruction, null, 2)}
+                  {JSON.stringify(effectiveInstruction, null, 2)}
                 </pre>
               </div>
             </div>
