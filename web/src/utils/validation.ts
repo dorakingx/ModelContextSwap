@@ -53,9 +53,10 @@ export function validateSolanaPublicKey(value: string, fieldName: string): strin
 
   const trimmed = value.trim();
 
-  // Basic Solana public key format validation (base58, 32-44 characters)
+  // Solana public keys can be 32-44 characters (base58 encoded)
+  // System program "11111111111111111111111111111111" is 32 characters and valid
   if (trimmed.length < 32 || trimmed.length > 44) {
-    throw new ValidationError(`${fieldName} must be a valid Solana public key (length: ${trimmed.length})`, fieldName);
+    throw new ValidationError(`${fieldName} must be a valid Solana public key (length: ${trimmed.length}, expected: 32-44)`, fieldName);
   }
 
   // Check for base58 characters (simplified check)
@@ -64,11 +65,12 @@ export function validateSolanaPublicKey(value: string, fieldName: string): strin
   }
 
   // Try to create PublicKey to validate it's actually a valid key
+  // This is the most reliable way to validate
   try {
     const { PublicKey } = require("@solana/web3.js");
     new PublicKey(trimmed);
-  } catch (err) {
-    throw new ValidationError(`${fieldName} is not a valid Solana public key: ${trimmed.substring(0, 20)}...`, fieldName);
+  } catch (err: any) {
+    throw new ValidationError(`${fieldName} is not a valid Solana public key: ${err.message || trimmed.substring(0, 20) + "..."}`, fieldName);
   }
 
   return trimmed;

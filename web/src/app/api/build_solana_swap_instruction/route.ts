@@ -47,7 +47,16 @@ export async function POST(req: NextRequest) {
     }
 
     // Validate inputs
-    const validatedParams = validateSwapInstructionRequest(body);
+    let validatedParams;
+    try {
+      validatedParams = validateSwapInstructionRequest(body);
+    } catch (err) {
+      // Log validation error details
+      if (process.env.NODE_ENV === "development") {
+        console.error("[build_solana_swap_instruction] Validation error:", err);
+      }
+      return createErrorResponse(err, 400);
+    }
 
     // Build instruction with validated PublicKeys
     // Validate each PublicKey individually to provide better error messages
@@ -62,8 +71,15 @@ export async function POST(req: NextRequest) {
 
     try {
       programId = new PublicKey(validatedParams.programId);
-    } catch (err) {
-      throw new ValidationError(`Invalid programId: ${validatedParams.programId}`, "programId");
+      if (process.env.NODE_ENV === "development") {
+        console.log("[build_solana_swap_instruction] programId:", validatedParams.programId, "->", programId.toString());
+      }
+    } catch (err: any) {
+      const errorMsg = err.message || "Unknown error";
+      if (process.env.NODE_ENV === "development") {
+        console.error("[build_solana_swap_instruction] programId error:", validatedParams.programId, errorMsg);
+      }
+      throw new ValidationError(`Invalid programId '${validatedParams.programId}': ${errorMsg}`, "programId");
     }
 
     try {

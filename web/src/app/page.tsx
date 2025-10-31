@@ -244,12 +244,13 @@ export default function Home() {
 
       // Note: These are placeholder values - in production, these should be fetched from
       // the actual DEX protocol or pool contracts using the token mints
-      // For now, we use simplified derivation that may not work with actual protocol
+      // Get program ID from environment variable or use a default placeholder
+      const programIdString = process.env.NEXT_PUBLIC_DEX_PROGRAM_ID || "11111111111111111111111111111111";
       let programId: PublicKey;
       try {
-        programId = new PublicKey("Dex111111111111111111111111111111111111111");
-      } catch (err) {
-        throw new Error("Invalid program ID");
+        programId = new PublicKey(programIdString);
+      } catch (err: any) {
+        throw new Error(`Invalid program ID '${programIdString}': ${err.message}`);
       }
       
       // Derive pool address from token mints
