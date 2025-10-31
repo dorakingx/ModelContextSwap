@@ -348,7 +348,18 @@ async function buildSwapIxWithAnchor(anchor, params, options) {
       } catch {
       }
     }
-    program = new Program(sanitizedIdl, programId, provider);
+    const freshProgramId = new PublicKey(programId.toString());
+    const freshProgramIdWithBn = freshProgramId;
+    if (!("_bn" in freshProgramIdWithBn) || freshProgramIdWithBn._bn === void 0) {
+      throw new Error("Failed to create fresh Program ID PublicKey with _bn property");
+    }
+    const freshProviderWalletPubkey = new PublicKey(provider.wallet.publicKey.toString());
+    const freshProviderWalletPubkeyWithBn = freshProviderWalletPubkey;
+    if (!("_bn" in freshProviderWalletPubkeyWithBn) || freshProviderWalletPubkeyWithBn._bn === void 0) {
+      throw new Error("Failed to create fresh provider wallet publicKey with _bn property");
+    }
+    provider.wallet.publicKey = freshProviderWalletPubkey;
+    program = new Program(sanitizedIdl, freshProgramId, provider);
   } catch (err) {
     const idlMetadata = sanitizedIdl?.metadata || dex_ai_default.metadata;
     const errorMsg = [

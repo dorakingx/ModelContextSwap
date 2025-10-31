@@ -472,10 +472,26 @@ export async function buildSwapIxWithAnchor(
       }
     }
     
-    // Use sanitized IDL instead of original to prevent _bn errors
+    // Before creating Program, ensure programId is a fresh PublicKey instance
+    // This prevents any potential serialization issues that might cause _bn to be lost
+    const freshProgramId = new PublicKey(programId.toString());
+    const freshProgramIdWithBn = freshProgramId as any;
+    if (!("_bn" in freshProgramIdWithBn) || freshProgramIdWithBn._bn === undefined) {
+      throw new Error("Failed to create fresh Program ID PublicKey with _bn property");
+    }
+    
+    // Also ensure provider.wallet.publicKey is fresh
+    const freshProviderWalletPubkey = new PublicKey(provider.wallet.publicKey.toString());
+    const freshProviderWalletPubkeyWithBn = freshProviderWalletPubkey as any;
+    if (!("_bn" in freshProviderWalletPubkeyWithBn) || freshProviderWalletPubkeyWithBn._bn === undefined) {
+      throw new Error("Failed to create fresh provider wallet publicKey with _bn property");
+    }
+    provider.wallet.publicKey = freshProviderWalletPubkey;
+    
+    // Use sanitized IDL with fresh PublicKey instances to prevent _bn errors
     // Note: Anchor's Program constructor will call translateAddress internally
     // which may access _bn property of various addresses in the IDL
-    program = new Program(sanitizedIdl, programId, provider);
+    program = new Program(sanitizedIdl, freshProgramId, provider);
   } catch (err: any) {
     // Enhanced error message for Program creation failures
     const idlMetadata = sanitizedIdl?.metadata || (idl as any).metadata;
