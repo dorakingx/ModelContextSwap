@@ -9,6 +9,41 @@ type AnchorExports = {
 };
 import idl from "./dex_ai.json";
 
+// Validation helper functions
+function assertPubkey(name: string, v: string | PublicKey | undefined | null): PublicKey {
+  if (!v) throw new Error(`${name} is missing`);
+  try {
+    return v instanceof PublicKey ? v : new PublicKey(v);
+  } catch (err: any) {
+    throw new Error(`${name} is invalid: ${err.message || "Invalid public key"}`);
+  }
+}
+
+function assertBN(name: string, BN: any, value: string | number | bigint | undefined | null): any {
+  if (!BN || typeof BN !== "function") {
+    throw new Error(`BN class is invalid for ${name}`);
+  }
+  if (value === undefined || value === null) {
+    throw new Error(`${name} is missing`);
+  }
+  try {
+    const valueStr = typeof value === "bigint" ? value.toString() : String(value);
+    if (!valueStr || valueStr.trim() === "" || isNaN(Number(valueStr))) {
+      throw new Error(`Invalid ${name} value: "${valueStr}"`);
+    }
+    const bn = new BN(valueStr);
+    if (!bn || typeof bn.toString !== "function") {
+      throw new Error(`Failed to create valid BN instance for ${name}`);
+    }
+    return bn;
+  } catch (err: any) {
+    if (err.message && err.message.includes("is missing") || err.message.includes("is invalid")) {
+      throw err;
+    }
+    throw new Error(`Failed to create BN for ${name}: ${err.message || "Unknown error"}`);
+  }
+}
+
 export type QuoteParams = {
   amountIn: bigint;
   reserveIn: bigint;
@@ -52,77 +87,25 @@ export async function buildSwapIxWithAnchor(anchor: AnchorExports, params: SwapB
     throw new Error(`BN class is invalid: ${typeof BN}, constructor: ${BN?.name || "unknown"}`);
   }
 
+  // Validate all PublicKey parameters using assertPubkey
+  const programId = assertPubkey("programId", params.programId);
+  const pool = assertPubkey("pool", params.pool);
+  const user = assertPubkey("user", params.user);
+  const userSource = assertPubkey("userSource", params.userSource);
+  const userDestination = assertPubkey("userDestination", params.userDestination);
+  const vaultA = assertPubkey("vaultA", params.vaultA);
+  const vaultB = assertPubkey("vaultB", params.vaultB);
+  const tokenProgram = assertPubkey("tokenProgram", params.tokenProgram);
+
   const provider = AnchorProvider.local();
-  const program = new Program(idl as any, params.programId, provider);
+  const program = new Program(idl as any, programId, provider);
   
-  // Ensure amountIn and minAmountOut are valid bigints
-  if (!params.amountIn || !params.minAmountOut) {
-    throw new Error("amountIn and minAmountOut must be provided");
-  }
-
-  // Convert bigint to string before creating BN
-  const amountInStr = typeof params.amountIn === "bigint" 
-    ? params.amountIn.toString() 
-    : String(params.amountIn);
-  const minAmountOutStr = typeof params.minAmountOut === "bigint"
-    ? params.minAmountOut.toString()
-    : String(params.minAmountOut);
-
-  // Validate strings are not empty and are valid numbers
-  if (!amountInStr || amountInStr.trim() === "" || isNaN(Number(amountInStr))) {
-    throw new Error(`Invalid amountIn string: "${amountInStr}"`);
-  }
-  if (!minAmountOutStr || minAmountOutStr.trim() === "" || isNaN(Number(minAmountOutStr))) {
-    throw new Error(`Invalid minAmountOut string: "${minAmountOutStr}"`);
-  }
-
-  // Create BN instances with error handling
-  let amountInBN;
-  let minAmountOutBN;
+  // Validate and create BN instances using assertBN
+  const amountInBN = assertBN("amountIn", BN, params.amountIn);
+  const minAmountOutBN = assertBN("minAmountOut", BN, params.minAmountOut);
   
+  // Build the instruction with explicit error handling at each step
   try {
-    amountInBN = new BN(amountInStr);
-    // Validate BN instance was created correctly
-    if (!amountInBN || typeof amountInBN.toString !== "function") {
-      throw new Error(`Failed to create valid BN instance for amountIn: ${amountInStr}`);
-    }
-  } catch (err: any) {
-    throw new Error(`Failed to create BN for amountIn "${amountInStr}": ${err.message}`);
-  }
-
-  try {
-    minAmountOutBN = new BN(minAmountOutStr);
-    // Validate BN instance was created correctly
-    if (!minAmountOutBN || typeof minAmountOutBN.toString !== "function") {
-      throw new Error(`Failed to create valid BN instance for minAmountOut: ${minAmountOutStr}`);
-    }
-  } catch (err: any) {
-    throw new Error(`Failed to create BN for minAmountOut "${minAmountOutStr}": ${err.message}`);
-  }
-  
-  // The account metas must match the Rust order
-  // Wrap BN instances to ensure they're in the format Anchor expects
-  try {
-    // Verify BN instances have required internal structure
-    // Anchor's BN wrapper may require _bn property
-    if (amountInBN && typeof amountInBN === "object") {
-      // Check if BN has _bn property or is a valid BN instance
-      const amountInStr = amountInBN.toString();
-      const amountInNum = amountInBN.toNumber ? amountInBN.toNumber() : Number(amountInStr);
-      if (isNaN(amountInNum)) {
-        throw new Error(`Invalid amountInBN: cannot convert to number`);
-      }
-    }
-    
-    if (minAmountOutBN && typeof minAmountOutBN === "object") {
-      const minAmountOutStr = minAmountOutBN.toString();
-      const minAmountOutNum = minAmountOutBN.toNumber ? minAmountOutBN.toNumber() : Number(minAmountOutStr);
-      if (isNaN(minAmountOutNum)) {
-        throw new Error(`Invalid minAmountOutBN: cannot convert to number`);
-      }
-    }
-
-    // Build the instruction with explicit error handling at each step
     const methods = program.methods;
     if (!methods || !methods.swap) {
       throw new Error("program.methods.swap is not available");
@@ -133,41 +116,25 @@ export async function buildSwapIxWithAnchor(anchor: AnchorExports, params: SwapB
       throw new Error("methods.swap() returned undefined");
     }
 
-    // Validate all account parameters are valid PublicKey instances
-    // Anchor checks for _bn property on accounts, so undefined/null will cause the error
-    const accountValidations = [
-      { name: "user", value: params.user },
-      { name: "userSource", value: params.userSource },
-      { name: "userDestination", value: params.userDestination },
-      { name: "pool", value: params.pool },
-      { name: "vaultA", value: params.vaultA },
-      { name: "vaultB", value: params.vaultB },
-      { name: "tokenProgram", value: params.tokenProgram },
-    ];
+    // All accounts are already validated by assertPubkey above
+    // Verify they have _bn property (required by Anchor)
+    const accounts = {
+      user,
+      userSource,
+      userDestination,
+      pool,
+      vaultA,
+      vaultB,
+      tokenProgram,
+    };
 
-    for (const { name, value } of accountValidations) {
-      if (!value) {
-        throw new Error(`Account parameter '${name}' is undefined or null`);
-      }
-      if (!(value instanceof PublicKey)) {
-        throw new Error(`Account parameter '${name}' is not a valid PublicKey instance (got: ${typeof value})`);
-      }
-      // Verify PublicKey has _bn property (required by Anchor for validation)
+    for (const [name, value] of Object.entries(accounts)) {
       if (!("_bn" in value)) {
         throw new Error(`Account parameter '${name}' PublicKey is missing _bn property`);
       }
     }
 
-    const accountsBuilder = swapMethod.accounts({
-      user: params.user,
-      userSource: params.userSource,
-      userDestination: params.userDestination,
-      pool: params.pool,
-      vaultA: params.vaultA,
-      vaultB: params.vaultB,
-      tokenProgram: params.tokenProgram,
-      // systemProgram is not needed for swap
-    });
+    const accountsBuilder = swapMethod.accounts(accounts);
 
     if (!accountsBuilder) {
       throw new Error("swapMethod.accounts() returned undefined");

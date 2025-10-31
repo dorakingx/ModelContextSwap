@@ -5,6 +5,16 @@ import { validateSwapInstructionRequest } from "@/utils/validation";
 import { ApiError, ValidationError } from "@/types";
 import * as anchor from "@coral-xyz/anchor";
 
+// Validation helper function
+function assertPubkey(name: string, v: string | PublicKey | undefined | null): PublicKey {
+  if (!v) throw new ValidationError(`${name} is missing`, name);
+  try {
+    return v instanceof PublicKey ? v : new PublicKey(v);
+  } catch (err: any) {
+    throw new ValidationError(`${name} is invalid: ${err.message || "Invalid public key"}`, name);
+  }
+}
+
 // Unified error response helper
 function createErrorResponse(error: unknown, statusCode: number = 400): Response {
   let message = "An error occurred";
@@ -58,98 +68,28 @@ export async function POST(req: NextRequest) {
       return createErrorResponse(err, 400);
     }
 
-    // Build instruction with validated PublicKeys
-    // Validate each PublicKey individually to provide better error messages
-    let programId: PublicKey;
-    let pool: PublicKey;
-    let user: PublicKey;
-    let userSource: PublicKey;
-    let userDestination: PublicKey;
-    let vaultA: PublicKey;
-    let vaultB: PublicKey;
-    let tokenProgram: PublicKey;
-
-    try {
-      programId = new PublicKey(validatedParams.programId);
-      if (process.env.NODE_ENV === "development") {
-        console.log("[build_solana_swap_instruction] programId:", validatedParams.programId, "->", programId.toString());
-      }
-    } catch (err: any) {
-      const errorMsg = err.message || "Unknown error";
-      if (process.env.NODE_ENV === "development") {
-        console.error("[build_solana_swap_instruction] programId error:", validatedParams.programId, errorMsg);
-      }
-      throw new ValidationError(`Invalid programId '${validatedParams.programId}': ${errorMsg}`, "programId");
-    }
-
-    try {
-      pool = new PublicKey(validatedParams.pool);
-    } catch (err) {
-      throw new ValidationError(`Invalid pool: ${validatedParams.pool}`, "pool");
-    }
-
-    try {
-      user = new PublicKey(validatedParams.user);
-    } catch (err) {
-      throw new ValidationError(`Invalid user: ${validatedParams.user}`, "user");
-    }
-
-    try {
-      userSource = new PublicKey(validatedParams.userSource);
-    } catch (err) {
-      throw new ValidationError(`Invalid userSource: ${validatedParams.userSource}`, "userSource");
-    }
-
-    try {
-      userDestination = new PublicKey(validatedParams.userDestination);
-    } catch (err) {
-      throw new ValidationError(`Invalid userDestination: ${validatedParams.userDestination}`, "userDestination");
-    }
-
-    try {
-      vaultA = new PublicKey(validatedParams.vaultA);
-    } catch (err) {
-      throw new ValidationError(`Invalid vaultA: ${validatedParams.vaultA}`, "vaultA");
-    }
-
-    try {
-      vaultB = new PublicKey(validatedParams.vaultB);
-    } catch (err) {
-      throw new ValidationError(`Invalid vaultB: ${validatedParams.vaultB}`, "vaultB");
-    }
-
-    try {
-      tokenProgram = new PublicKey(validatedParams.tokenProgram);
-    } catch (err) {
-      throw new ValidationError(`Invalid tokenProgram: ${validatedParams.tokenProgram}`, "tokenProgram");
-    }
-
     // Validate amount values before creating params
     if (validatedParams.amountIn === undefined || validatedParams.minAmountOut === undefined) {
       throw new ValidationError("amountIn and minAmountOut must be provided", "amount");
     }
 
-    // Explicitly validate all PublicKeys are defined and valid
-    // Anchor requires PublicKeys to have _bn property, so we validate this here
-    const publicKeyValidations = [
-      { name: "programId", value: programId },
-      { name: "pool", value: pool },
-      { name: "user", value: user },
-      { name: "userSource", value: userSource },
-      { name: "userDestination", value: userDestination },
-      { name: "vaultA", value: vaultA },
-      { name: "vaultB", value: vaultB },
-      { name: "tokenProgram", value: tokenProgram },
-    ];
+    // Build instruction with validated PublicKeys using assertPubkey
+    const programId = assertPubkey("programId", validatedParams.programId);
+    const pool = assertPubkey("pool", validatedParams.pool);
+    const user = assertPubkey("user", validatedParams.user);
+    const userSource = assertPubkey("userSource", validatedParams.userSource);
+    const userDestination = assertPubkey("userDestination", validatedParams.userDestination);
+    const vaultA = assertPubkey("vaultA", validatedParams.vaultA);
+    const vaultB = assertPubkey("vaultB", validatedParams.vaultB);
+    const tokenProgram = assertPubkey("tokenProgram", validatedParams.tokenProgram);
 
-    for (const { name, value } of publicKeyValidations) {
-      if (!value) {
-        throw new ValidationError(`PublicKey '${name}' is undefined or null after creation`, name);
-      }
-      if (!(value instanceof PublicKey)) {
-        throw new ValidationError(`'${name}' is not a PublicKey instance (got: ${typeof value})`, name);
-      }
-      // Verify PublicKey has _bn property (required by Anchor)
+    if (process.env.NODE_ENV === "development") {
+      console.log("[build_solana_swap_instruction] programId:", validatedParams.programId, "->", programId.toString());
+    }
+
+    // Verify all PublicKeys have _bn property (required by Anchor)
+    const publicKeys = { programId, pool, user, userSource, userDestination, vaultA, vaultB, tokenProgram };
+    for (const [name, value] of Object.entries(publicKeys)) {
       if (!("_bn" in value)) {
         throw new ValidationError(`PublicKey '${name}' is missing _bn property`, name);
       }

@@ -71,6 +71,38 @@ var dex_ai_default = {
 };
 
 // src/index.ts
+function assertPubkey(name, v) {
+  if (!v) throw new Error(`${name} is missing`);
+  try {
+    return v instanceof import_web3.PublicKey ? v : new import_web3.PublicKey(v);
+  } catch (err) {
+    throw new Error(`${name} is invalid: ${err.message || "Invalid public key"}`);
+  }
+}
+function assertBN(name, BN, value) {
+  if (!BN || typeof BN !== "function") {
+    throw new Error(`BN class is invalid for ${name}`);
+  }
+  if (value === void 0 || value === null) {
+    throw new Error(`${name} is missing`);
+  }
+  try {
+    const valueStr = typeof value === "bigint" ? value.toString() : String(value);
+    if (!valueStr || valueStr.trim() === "" || isNaN(Number(valueStr))) {
+      throw new Error(`Invalid ${name} value: "${valueStr}"`);
+    }
+    const bn = new BN(valueStr);
+    if (!bn || typeof bn.toString !== "function") {
+      throw new Error(`Failed to create valid BN instance for ${name}`);
+    }
+    return bn;
+  } catch (err) {
+    if (err.message && err.message.includes("is missing") || err.message.includes("is invalid")) {
+      throw err;
+    }
+    throw new Error(`Failed to create BN for ${name}: ${err.message || "Unknown error"}`);
+  }
+}
 function constantProductQuote({ amountIn, reserveIn, reserveOut, feeBps }) {
   if (reserveIn <= 0n || reserveOut <= 0n || amountIn <= 0n) {
     return { amountOut: 0n };
@@ -86,52 +118,19 @@ async function buildSwapIxWithAnchor(anchor, params) {
   if (!BN || typeof BN !== "function") {
     throw new Error(`BN class is invalid: ${typeof BN}, constructor: ${BN?.name || "unknown"}`);
   }
+  const programId = assertPubkey("programId", params.programId);
+  const pool = assertPubkey("pool", params.pool);
+  const user = assertPubkey("user", params.user);
+  const userSource = assertPubkey("userSource", params.userSource);
+  const userDestination = assertPubkey("userDestination", params.userDestination);
+  const vaultA = assertPubkey("vaultA", params.vaultA);
+  const vaultB = assertPubkey("vaultB", params.vaultB);
+  const tokenProgram = assertPubkey("tokenProgram", params.tokenProgram);
   const provider = AnchorProvider.local();
-  const program = new Program(dex_ai_default, params.programId, provider);
-  if (!params.amountIn || !params.minAmountOut) {
-    throw new Error("amountIn and minAmountOut must be provided");
-  }
-  const amountInStr = typeof params.amountIn === "bigint" ? params.amountIn.toString() : String(params.amountIn);
-  const minAmountOutStr = typeof params.minAmountOut === "bigint" ? params.minAmountOut.toString() : String(params.minAmountOut);
-  if (!amountInStr || amountInStr.trim() === "" || isNaN(Number(amountInStr))) {
-    throw new Error(`Invalid amountIn string: "${amountInStr}"`);
-  }
-  if (!minAmountOutStr || minAmountOutStr.trim() === "" || isNaN(Number(minAmountOutStr))) {
-    throw new Error(`Invalid minAmountOut string: "${minAmountOutStr}"`);
-  }
-  let amountInBN;
-  let minAmountOutBN;
+  const program = new Program(dex_ai_default, programId, provider);
+  const amountInBN = assertBN("amountIn", BN, params.amountIn);
+  const minAmountOutBN = assertBN("minAmountOut", BN, params.minAmountOut);
   try {
-    amountInBN = new BN(amountInStr);
-    if (!amountInBN || typeof amountInBN.toString !== "function") {
-      throw new Error(`Failed to create valid BN instance for amountIn: ${amountInStr}`);
-    }
-  } catch (err) {
-    throw new Error(`Failed to create BN for amountIn "${amountInStr}": ${err.message}`);
-  }
-  try {
-    minAmountOutBN = new BN(minAmountOutStr);
-    if (!minAmountOutBN || typeof minAmountOutBN.toString !== "function") {
-      throw new Error(`Failed to create valid BN instance for minAmountOut: ${minAmountOutStr}`);
-    }
-  } catch (err) {
-    throw new Error(`Failed to create BN for minAmountOut "${minAmountOutStr}": ${err.message}`);
-  }
-  try {
-    if (amountInBN && typeof amountInBN === "object") {
-      const amountInStr2 = amountInBN.toString();
-      const amountInNum = amountInBN.toNumber ? amountInBN.toNumber() : Number(amountInStr2);
-      if (isNaN(amountInNum)) {
-        throw new Error(`Invalid amountInBN: cannot convert to number`);
-      }
-    }
-    if (minAmountOutBN && typeof minAmountOutBN === "object") {
-      const minAmountOutStr2 = minAmountOutBN.toString();
-      const minAmountOutNum = minAmountOutBN.toNumber ? minAmountOutBN.toNumber() : Number(minAmountOutStr2);
-      if (isNaN(minAmountOutNum)) {
-        throw new Error(`Invalid minAmountOutBN: cannot convert to number`);
-      }
-    }
     const methods = program.methods;
     if (!methods || !methods.swap) {
       throw new Error("program.methods.swap is not available");
@@ -140,36 +139,21 @@ async function buildSwapIxWithAnchor(anchor, params) {
     if (!swapMethod) {
       throw new Error("methods.swap() returned undefined");
     }
-    const accountValidations = [
-      { name: "user", value: params.user },
-      { name: "userSource", value: params.userSource },
-      { name: "userDestination", value: params.userDestination },
-      { name: "pool", value: params.pool },
-      { name: "vaultA", value: params.vaultA },
-      { name: "vaultB", value: params.vaultB },
-      { name: "tokenProgram", value: params.tokenProgram }
-    ];
-    for (const { name, value } of accountValidations) {
-      if (!value) {
-        throw new Error(`Account parameter '${name}' is undefined or null`);
-      }
-      if (!(value instanceof import_web3.PublicKey)) {
-        throw new Error(`Account parameter '${name}' is not a valid PublicKey instance (got: ${typeof value})`);
-      }
+    const accounts = {
+      user,
+      userSource,
+      userDestination,
+      pool,
+      vaultA,
+      vaultB,
+      tokenProgram
+    };
+    for (const [name, value] of Object.entries(accounts)) {
       if (!("_bn" in value)) {
         throw new Error(`Account parameter '${name}' PublicKey is missing _bn property`);
       }
     }
-    const accountsBuilder = swapMethod.accounts({
-      user: params.user,
-      userSource: params.userSource,
-      userDestination: params.userDestination,
-      pool: params.pool,
-      vaultA: params.vaultA,
-      vaultB: params.vaultB,
-      tokenProgram: params.tokenProgram
-      // systemProgram is not needed for swap
-    });
+    const accountsBuilder = swapMethod.accounts(accounts);
     if (!accountsBuilder) {
       throw new Error("swapMethod.accounts() returned undefined");
     }

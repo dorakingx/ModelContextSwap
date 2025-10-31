@@ -217,41 +217,39 @@ export default function Home() {
     setSwapTxSignature(null);
 
     try {
+      // Validation helper function
+      function assertPubkey(name: string, v: string | PublicKey | undefined | null): PublicKey {
+        if (!v) throw new Error(`${name} is missing`);
+        try {
+          return v instanceof PublicKey ? v : new PublicKey(v);
+        } catch (err: any) {
+          throw new Error(`${name} is invalid: ${err.message || "Invalid public key"}`);
+        }
+      }
+
       // Validate token mints
       if (!tokenFrom.mint || !tokenTo.mint) {
         throw new Error("Token mint addresses are missing");
+      }
+
+      // Validate quote.amountOut is defined
+      if (!quote || quote.amountOut === undefined || quote.amountOut === null) {
+        throw new Error("Quote amountOut is missing. Please get a quote first.");
       }
 
       // Convert amountIn to smallest unit
       const amountInConverted = convertToSmallestUnit(amountIn, tokenFrom.decimals);
       const minAmountOut = quote.amountOut;
 
-      // Validate and create PublicKeys for token mints
-      let tokenFromMint: PublicKey;
-      let tokenToMint: PublicKey;
-      
-      try {
-        tokenFromMint = new PublicKey(tokenFrom.mint);
-      } catch (err) {
-        throw new Error(`Invalid tokenFrom mint address: ${tokenFrom.mint}`);
-      }
-      
-      try {
-        tokenToMint = new PublicKey(tokenTo.mint);
-      } catch (err) {
-        throw new Error(`Invalid tokenTo mint address: ${tokenTo.mint}`);
-      }
+      // Validate and create PublicKeys for token mints using assertPubkey
+      const tokenFromMint = assertPubkey("tokenFrom.mint", tokenFrom.mint);
+      const tokenToMint = assertPubkey("tokenTo.mint", tokenTo.mint);
 
       // Note: These are placeholder values - in production, these should be fetched from
       // the actual DEX protocol or pool contracts using the token mints
       // Get program ID from environment variable or use a default placeholder
       const programIdString = process.env.NEXT_PUBLIC_DEX_PROGRAM_ID || "11111111111111111111111111111111";
-      let programId: PublicKey;
-      try {
-        programId = new PublicKey(programIdString);
-      } catch (err: any) {
-        throw new Error(`Invalid program ID '${programIdString}': ${err.message}`);
-      }
+      const programId = assertPubkey("programId", programIdString);
       
       // Derive pool address from token mints
       // Each seed must be <= 32 bytes. Use multiple seeds instead of concatenating
@@ -261,8 +259,15 @@ export default function Home() {
         tokenToMint.toBuffer().slice(0, 8),
       ];
       const [pool] = PublicKey.findProgramAddressSync(poolSeeds, programId);
+      if (!pool) {
+        throw new Error("Failed to derive pool address");
+      }
       
-      const user = publicKey;
+      // Validate user publicKey is defined
+      if (!publicKey) {
+        throw new Error("User publicKey is missing");
+      }
+      const user = assertPubkey("user", publicKey);
       
       // Derive user token accounts (simplified - in production, these should be actual token accounts)
       // Use first 8 bytes of mint address to keep seeds under 32 bytes
@@ -272,6 +277,9 @@ export default function Home() {
         tokenFromMint.toBuffer().slice(0, 8),
       ];
       const [userSource] = PublicKey.findProgramAddressSync(userSourceSeeds, programId);
+      if (!userSource) {
+        throw new Error("Failed to derive userSource address");
+      }
       
       const userDestinationSeeds = [
         Buffer.from("token"),
@@ -279,6 +287,9 @@ export default function Home() {
         tokenToMint.toBuffer().slice(0, 8),
       ];
       const [userDestination] = PublicKey.findProgramAddressSync(userDestinationSeeds, programId);
+      if (!userDestination) {
+        throw new Error("Failed to derive userDestination address");
+      }
       
       // Derive vault addresses
       // Use first 8 bytes of pool address to keep seeds manageable
@@ -288,6 +299,9 @@ export default function Home() {
         tokenFromMint.toBuffer().slice(0, 8),
       ];
       const [vaultA] = PublicKey.findProgramAddressSync(vaultASeeds, programId);
+      if (!vaultA) {
+        throw new Error("Failed to derive vaultA address");
+      }
       
       const vaultBSeeds = [
         Buffer.from("vault"),
@@ -295,13 +309,11 @@ export default function Home() {
         tokenToMint.toBuffer().slice(0, 8),
       ];
       const [vaultB] = PublicKey.findProgramAddressSync(vaultBSeeds, programId);
-      
-      let tokenProgram: PublicKey;
-      try {
-        tokenProgram = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
-      } catch (err) {
-        throw new Error("Invalid token program ID");
+      if (!vaultB) {
+        throw new Error("Failed to derive vaultB address");
       }
+      
+      const tokenProgram = assertPubkey("tokenProgram", "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
 
       // Build instruction
       const instructionParams: SwapInstructionRequest = {
@@ -352,15 +364,31 @@ export default function Home() {
       // Build transaction
       const transaction = new Transaction();
       
-      // Reconstruct TransactionInstruction from API response
-      const accountMetas: AccountMeta[] = instructionData.keys.map((k: any) => ({
-        pubkey: new PublicKey(k.pubkey),
-        isSigner: k.isSigner,
-        isWritable: k.isWritable,
-      }));
+      // Validate instructionData fields
+      if (!instructionData || !instructionData.keys || !Array.isArray(instructionData.keys)) {
+        throw new Error("Invalid instruction data: keys array is missing");
+      }
+      if (!instructionData.programId) {
+        throw new Error("Invalid instruction data: programId is missing");
+      }
+      if (!instructionData.data) {
+        throw new Error("Invalid instruction data: data is missing");
+      }
+
+      // Reconstruct TransactionInstruction from API response using assertPubkey
+      const accountMetas: AccountMeta[] = instructionData.keys.map((k: any, index: number) => {
+        if (!k || k.pubkey === undefined || k.pubkey === null) {
+          throw new Error(`Invalid account at index ${index}: pubkey is missing`);
+        }
+        return {
+          pubkey: assertPubkey(`instructionData.keys[${index}].pubkey`, k.pubkey),
+          isSigner: k.isSigner ?? false,
+          isWritable: k.isWritable ?? false,
+        };
+      });
 
       const swapIx = new TransactionInstruction({
-        programId: new PublicKey(instructionData.programId),
+        programId: assertPubkey("instructionData.programId", instructionData.programId),
         keys: accountMetas,
         data: Buffer.from(instructionData.data, "base64"),
       });
