@@ -551,6 +551,60 @@ export async function buildSwapIxWithAnchor(
       }
     }
     
+    // Final validation before Program creation - ensure all parameters are valid
+    // Anchor's Program constructor calls translateAddress internally, which requires
+    // valid PublicKey instances with _bn property
+    
+    // Validate finalIdl is an object
+    if (!finalIdl || typeof finalIdl !== 'object') {
+      throw new Error('finalIdl is invalid before Program creation');
+    }
+    
+    // Validate freshProgramId is a PublicKey instance with _bn property
+    if (!freshProgramId || !(freshProgramId instanceof PublicKey)) {
+      throw new Error('freshProgramId is not a PublicKey instance before Program creation');
+    }
+    const finalProgramIdWithBn = freshProgramId as any;
+    if (!("_bn" in finalProgramIdWithBn) || finalProgramIdWithBn._bn === undefined) {
+      throw new Error('freshProgramId is missing _bn property before Program creation');
+    }
+    
+    // Validate provider is an object with required properties
+    if (!provider || typeof provider !== 'object') {
+      throw new Error('provider is invalid before Program creation');
+    }
+    if (!provider.connection || !provider.wallet || !provider.wallet.publicKey) {
+      throw new Error('provider is missing required properties before Program creation');
+    }
+    
+    // Validate provider.wallet.publicKey has _bn property
+    const finalProviderWalletPubkeyWithBn = provider.wallet.publicKey as any;
+    if (!("_bn" in finalProviderWalletPubkeyWithBn) || finalProviderWalletPubkeyWithBn._bn === undefined) {
+      throw new Error('provider.wallet.publicKey is missing _bn property before Program creation');
+    }
+    
+    // Log all parameters before Program creation for debugging
+    if (typeof console !== 'undefined' && console.log) {
+      try {
+        console.log('[SDK] About to create Program with:', {
+          programId: freshProgramId.toString(),
+          programIdType: typeof freshProgramId,
+          programIdInstanceof: freshProgramId instanceof PublicKey,
+          programIdHasBn: "_bn" in finalProgramIdWithBn,
+          providerExists: !!provider,
+          providerConnectionExists: !!provider.connection,
+          providerWalletExists: !!provider.wallet,
+          providerWalletPubkey: provider.wallet.publicKey.toString(),
+          providerWalletPubkeyHasBn: "_bn" in finalProviderWalletPubkeyWithBn,
+          finalIdlVersion: finalIdl.version,
+          finalIdlName: finalIdl.name,
+          finalIdlHasMetadata: !!finalIdl.metadata,
+        });
+      } catch {
+        // Ignore logging errors
+      }
+    }
+    
     // Use sanitized IDL WITHOUT metadata.address to prevent _bn errors
     // Anchor's Program constructor will use the programId parameter instead
     // The constructor signature is: new Program(idl, programId, provider)

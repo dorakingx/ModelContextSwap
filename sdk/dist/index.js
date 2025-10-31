@@ -389,6 +389,45 @@ async function buildSwapIxWithAnchor(anchor, params, options) {
       } catch {
       }
     }
+    if (!finalIdl || typeof finalIdl !== "object") {
+      throw new Error("finalIdl is invalid before Program creation");
+    }
+    if (!freshProgramId || !(freshProgramId instanceof PublicKey)) {
+      throw new Error("freshProgramId is not a PublicKey instance before Program creation");
+    }
+    const finalProgramIdWithBn = freshProgramId;
+    if (!("_bn" in finalProgramIdWithBn) || finalProgramIdWithBn._bn === void 0) {
+      throw new Error("freshProgramId is missing _bn property before Program creation");
+    }
+    if (!provider || typeof provider !== "object") {
+      throw new Error("provider is invalid before Program creation");
+    }
+    if (!provider.connection || !provider.wallet || !provider.wallet.publicKey) {
+      throw new Error("provider is missing required properties before Program creation");
+    }
+    const finalProviderWalletPubkeyWithBn = provider.wallet.publicKey;
+    if (!("_bn" in finalProviderWalletPubkeyWithBn) || finalProviderWalletPubkeyWithBn._bn === void 0) {
+      throw new Error("provider.wallet.publicKey is missing _bn property before Program creation");
+    }
+    if (typeof console !== "undefined" && console.log) {
+      try {
+        console.log("[SDK] About to create Program with:", {
+          programId: freshProgramId.toString(),
+          programIdType: typeof freshProgramId,
+          programIdInstanceof: freshProgramId instanceof PublicKey,
+          programIdHasBn: "_bn" in finalProgramIdWithBn,
+          providerExists: !!provider,
+          providerConnectionExists: !!provider.connection,
+          providerWalletExists: !!provider.wallet,
+          providerWalletPubkey: provider.wallet.publicKey.toString(),
+          providerWalletPubkeyHasBn: "_bn" in finalProviderWalletPubkeyWithBn,
+          finalIdlVersion: finalIdl.version,
+          finalIdlName: finalIdl.name,
+          finalIdlHasMetadata: !!finalIdl.metadata
+        });
+      } catch {
+      }
+    }
     program = new Program(finalIdl, freshProgramId, provider);
   } catch (err) {
     const idlMetadata = sanitizedIdl?.metadata || dex_ai_default.metadata;
