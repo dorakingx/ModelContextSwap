@@ -16,6 +16,8 @@
     "@solana/wallet-adapter-react-ui": "^0.9.39",
     "@solana/wallet-adapter-wallets": "^0.19.37",
     "@solana/web3.js": "^1.95.3",
+    "@types/bn.js": "^5.2.0",
+    "bn.js": "^5.2.2",
     "dex-ai-sdk": "file:../sdk",
     "next": "16.0.1",
     "react": "19.2.0",

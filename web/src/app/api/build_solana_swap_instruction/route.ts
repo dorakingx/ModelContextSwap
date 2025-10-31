@@ -3,7 +3,8 @@ import { PublicKey, Connection, Keypair } from "@solana/web3.js";
 import { buildSwapIxWithAnchor } from "dex-ai-sdk";
 import { validateSwapInstructionRequest } from "@/utils/validation";
 import { ApiError, ValidationError } from "@/types";
-import anchor from "@coral-xyz/anchor";
+import * as anchor from "@coral-xyz/anchor";
+import BN from "bn.js";
 
 // Unified error response helper
 function createErrorResponse(error: unknown, statusCode: number = 400): Response {
@@ -172,9 +173,45 @@ export async function POST(req: NextRequest) {
     );
 
     // Use buildSwapIxWithAnchor which requires Anchor
-    // Ensure BN is properly imported and can be instantiated
+    // Import BN directly from bn.js (used by Anchor internally)
+    // Use anchor.BN if available, otherwise fall back to direct BN import
+    const BNClass = anchor.BN || BN;
+    
+    if (!BNClass) {
+      throw new Error("BN class is not available from Anchor or bn.js");
+    }
+
+    // Debug: log BN class info
+    if (process.env.NODE_ENV === "development") {
+      console.log("[build_solana_swap_instruction] BN class:", {
+        hasAnchorBN: !!anchor.BN,
+        hasDirectBN: !!BN,
+        usingClass: BNClass.name || "unknown",
+      });
+    }
+
+    // Test BN creation with actual values we'll use
+    let testBN;
+    try {
+      testBN = new BNClass(params.amountIn.toString());
+      if (process.env.NODE_ENV === "development") {
+        console.log("[build_solana_swap_instruction] BN test successful:", {
+          input: params.amountIn.toString(),
+          output: testBN.toString(),
+        });
+      }
+    } catch (err: any) {
+      console.error("[build_solana_swap_instruction] BN test failed:", {
+        error: err.message,
+        stack: err.stack,
+        amountIn: params.amountIn.toString(),
+        amountInType: typeof params.amountIn,
+      });
+      throw new Error(`BN initialization failed with value '${params.amountIn.toString()}': ${err.message}`);
+    }
+
     const anchorExports = {
-      BN: anchor.BN || (anchor as any).default?.BN || anchor,
+      BN: BNClass,
       Program: anchor.Program,
       AnchorProvider: {
         // Override local() to return our custom provider
@@ -182,21 +219,6 @@ export async function POST(req: NextRequest) {
         env: () => provider,
       },
     };
-    
-    // Validate BN before use
-    if (!anchorExports.BN) {
-      throw new Error("Anchor BN class is not available");
-    }
-    
-    // Test BN creation to ensure it works
-    try {
-      const testBN = new anchorExports.BN("0");
-      if (process.env.NODE_ENV === "development") {
-        console.log("[build_solana_swap_instruction] BN test successful:", testBN.toString());
-      }
-    } catch (err: any) {
-      throw new Error(`BN initialization failed: ${err.message}`);
-    }
     
     const ix = await buildSwapIxWithAnchor(anchorExports, params);
 
