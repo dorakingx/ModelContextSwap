@@ -205,7 +205,7 @@ async function buildSwapIxWithAnchor(anchor, params, options) {
   if (!dex_ai_default || typeof dex_ai_default !== "object") {
     throw new Error("IDL is invalid or undefined");
   }
-  const sanitizedIdl = JSON.parse(JSON.stringify(dex_ai_default));
+  let sanitizedIdl = JSON.parse(JSON.stringify(dex_ai_default));
   if (!sanitizedIdl.metadata) {
     sanitizedIdl.metadata = {};
   }
@@ -257,6 +257,25 @@ async function buildSwapIxWithAnchor(anchor, params, options) {
       throw new Error(
         `Program ID PublicKey is missing _bn property before Program creation. PublicKey: ${programId.toString()}`
       );
+    }
+    const idlString = JSON.stringify(sanitizedIdl);
+    if (idlString.includes("undefined") || idlString.includes("null")) {
+      console.warn("[SDK] IDL contains undefined/null values, attempting to clean");
+      const cleanedIdl = JSON.parse(JSON.stringify(sanitizedIdl, (key, value) => {
+        if (value === null || value === void 0) {
+          if (key.includes("address") || key.includes("pubkey") || key.includes("publicKey")) {
+            return void 0;
+          }
+        }
+        return value;
+      }));
+      sanitizedIdl = cleanedIdl;
+    }
+    if (typeof console !== "undefined" && console.log) {
+      try {
+        console.log("[SDK] Final IDL structure:", JSON.stringify(sanitizedIdl, null, 2).substring(0, 500));
+      } catch {
+      }
     }
     program = new Program(sanitizedIdl, programId, provider);
   } catch (err) {

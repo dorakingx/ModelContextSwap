@@ -284,7 +284,7 @@ export async function buildSwapIxWithAnchor(
   
   // Deep validation and sanitization of IDL to prevent _bn errors
   // Anchor's Program constructor processes the entire IDL and may encounter undefined addresses
-  const sanitizedIdl = JSON.parse(JSON.stringify(idl)) as any; // Deep clone to avoid mutating original
+  let sanitizedIdl = JSON.parse(JSON.stringify(idl)) as any; // Deep clone to avoid mutating original
   
   // Validate and fix IDL metadata.address
   if (!sanitizedIdl.metadata) {
@@ -363,6 +363,36 @@ export async function buildSwapIxWithAnchor(
       throw new Error(
         `Program ID PublicKey is missing _bn property before Program creation. PublicKey: ${programId.toString()}`
       );
+    }
+    
+    // Final IDL validation: ensure no undefined addresses remain
+    // Anchor's translateAddress function is called for various addresses in the IDL
+    // We need to ensure all address-like fields are valid strings or removed
+    const idlString = JSON.stringify(sanitizedIdl);
+    if (idlString.includes('undefined') || idlString.includes('null')) {
+      console.warn('[SDK] IDL contains undefined/null values, attempting to clean');
+      // Remove any remaining undefined/null values by stringifying and parsing
+      const cleanedIdl = JSON.parse(JSON.stringify(sanitizedIdl, (key, value) => {
+        // Remove undefined/null values that might be addresses
+        if (value === null || value === undefined) {
+          if (key.includes('address') || key.includes('pubkey') || key.includes('publicKey')) {
+            return undefined; // Remove from JSON
+          }
+        }
+        return value;
+      }));
+      
+      // Use cleaned IDL
+      sanitizedIdl = cleanedIdl;
+    }
+    
+    // Log final IDL structure for debugging
+    if (typeof console !== 'undefined' && console.log) {
+      try {
+        console.log('[SDK] Final IDL structure:', JSON.stringify(sanitizedIdl, null, 2).substring(0, 500));
+      } catch {
+        // Ignore logging errors
+      }
     }
     
     // Use sanitized IDL instead of original to prevent _bn errors
