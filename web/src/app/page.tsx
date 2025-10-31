@@ -104,42 +104,28 @@ export default function Home() {
     <div style={{ 
       minHeight: "100vh", 
       background: "var(--bg-light)",
-      padding: "2rem 0",
       position: "relative"
     }}>
-      <div className="container">
-        {/* Header */}
-        <div style={{ 
-          textAlign: "center", 
-          marginBottom: "3rem",
-          padding: "2rem 0"
-        }}>
-          <h1 style={{ 
-            fontSize: "3.5rem", 
-            fontWeight: 700, 
-            color: "var(--primary-red)",
-            marginBottom: "0.5rem",
-            letterSpacing: "-0.03em",
-            background: "linear-gradient(135deg, var(--primary-red) 0%, var(--accent-red) 100%)",
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor: "transparent",
-            backgroundClip: "text"
-          }}>
-            Model Context Swap
-          </h1>
-          <p style={{ 
-            fontSize: "1.15rem", 
-            color: "var(--text-secondary)",
-            maxWidth: "600px",
-            margin: "0 auto",
-            fontWeight: 500
-          }}>
-            AI agent-friendly DEX on Solana with Model Context Protocol integration
-          </p>
+      {/* Hero Section with Motif */}
+      <div className="hero">
+        <div className="hero-motif" />
+        <div className="container hero-content">
+          <h1>Model Context Swap</h1>
+          <p>AI agent-friendly DEX on Solana with Model Context Protocol integration</p>
+          <div className="cta-row">
+            <button className="btn btn-primary" onClick={() => document.getElementById('swap-section')?.scrollIntoView({ behavior: 'smooth' })}>
+              Start Swapping
+            </button>
+            <button className="btn btn-secondary" onClick={() => window.open('https://github.com/dorakingx/ModelContextSwap', '_blank')}>
+              View Docs
+            </button>
+          </div>
         </div>
+      </div>
 
-        {/* DEX Functionality Section */}
-        <div className="card-elevated" style={{ maxWidth: "600px", margin: "0 auto 3rem" }}>
+      {/* DEX Functionality Section - Overlapping Hero */}
+      <div className="container" style={{ marginTop: "-80px", position: "relative", zIndex: 1 }}>
+        <div className="card-elevated" id="swap-section" style={{ maxWidth: "600px", margin: "0 auto 3rem" }}>
           <h2 style={{ 
             fontSize: "1.75rem", 
             fontWeight: 700, 
@@ -508,6 +494,7 @@ export default function Home() {
           textAlign: "center", 
           marginTop: "4rem", 
           paddingTop: "2rem",
+          paddingBottom: "2rem",
           borderTop: "1px solid var(--border-default)"
         }}>
           <p style={{ 
@@ -526,6 +513,9 @@ export default function Home() {
           </p>
         </div>
       </div>
+      
+      {/* Corner Motif Decoration */}
+      <div className="motif-corner" />
     </div>
   );
 }
