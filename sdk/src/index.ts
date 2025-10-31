@@ -46,6 +46,12 @@ export type SwapBuildParams = {
 
 export async function buildSwapIxWithAnchor(anchor: AnchorExports, params: SwapBuildParams): Promise<TransactionInstruction> {
   const { BN, Program, AnchorProvider } = anchor;
+  
+  // Validate BN class
+  if (!BN || typeof BN !== "function") {
+    throw new Error(`BN class is invalid: ${typeof BN}, constructor: ${BN?.name || "unknown"}`);
+  }
+
   const provider = AnchorProvider.local();
   const program = new Program(idl as any, params.programId, provider);
   
@@ -62,24 +68,61 @@ export async function buildSwapIxWithAnchor(anchor: AnchorExports, params: SwapB
     ? params.minAmountOut.toString()
     : String(params.minAmountOut);
 
-  // Create BN instances
-  const amountInBN = new BN(amountInStr);
-  const minAmountOutBN = new BN(minAmountOutStr);
+  // Validate strings are not empty and are valid numbers
+  if (!amountInStr || amountInStr.trim() === "" || isNaN(Number(amountInStr))) {
+    throw new Error(`Invalid amountIn string: "${amountInStr}"`);
+  }
+  if (!minAmountOutStr || minAmountOutStr.trim() === "" || isNaN(Number(minAmountOutStr))) {
+    throw new Error(`Invalid minAmountOut string: "${minAmountOutStr}"`);
+  }
+
+  // Create BN instances with error handling
+  let amountInBN;
+  let minAmountOutBN;
+  
+  try {
+    amountInBN = new BN(amountInStr);
+    // Validate BN instance was created correctly
+    if (!amountInBN || typeof amountInBN.toString !== "function") {
+      throw new Error(`Failed to create valid BN instance for amountIn: ${amountInStr}`);
+    }
+  } catch (err: any) {
+    throw new Error(`Failed to create BN for amountIn "${amountInStr}": ${err.message}`);
+  }
+
+  try {
+    minAmountOutBN = new BN(minAmountOutStr);
+    // Validate BN instance was created correctly
+    if (!minAmountOutBN || typeof minAmountOutBN.toString !== "function") {
+      throw new Error(`Failed to create valid BN instance for minAmountOut: ${minAmountOutStr}`);
+    }
+  } catch (err: any) {
+    throw new Error(`Failed to create BN for minAmountOut "${minAmountOutStr}": ${err.message}`);
+  }
   
   // The account metas must match the Rust order
-  return await program.methods
-    .swap(amountInBN, minAmountOutBN)
-    .accounts({
-      user: params.user,
-      userSource: params.userSource,
-      userDestination: params.userDestination,
-      pool: params.pool,
-      vaultA: params.vaultA,
-      vaultB: params.vaultB,
-      tokenProgram: params.tokenProgram,
-      // systemProgram is not needed for swap
-    })
-    .instruction();
+  try {
+    return await program.methods
+      .swap(amountInBN, minAmountOutBN)
+      .accounts({
+        user: params.user,
+        userSource: params.userSource,
+        userDestination: params.userDestination,
+        pool: params.pool,
+        vaultA: params.vaultA,
+        vaultB: params.vaultB,
+        tokenProgram: params.tokenProgram,
+        // systemProgram is not needed for swap
+      })
+      .instruction();
+  } catch (err: any) {
+    // Enhanced error message for debugging
+    throw new Error(
+      `Failed to build swap instruction: ${err.message}. ` +
+      `BN instances: amountIn=${amountInBN?.toString() || "undefined"}, ` +
+      `minAmountOut=${minAmountOutBN?.toString() || "undefined"}`
+    );
+  }
 }
 
 // Backwards-compatible wrapper that throws a helpful error if used in environments

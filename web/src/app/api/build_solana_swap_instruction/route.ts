@@ -4,7 +4,6 @@ import { buildSwapIxWithAnchor } from "dex-ai-sdk";
 import { validateSwapInstructionRequest } from "@/utils/validation";
 import { ApiError, ValidationError } from "@/types";
 import * as anchor from "@coral-xyz/anchor";
-import BN from "bn.js";
 
 // Unified error response helper
 function createErrorResponse(error: unknown, statusCode: number = 400): Response {
@@ -173,31 +172,39 @@ export async function POST(req: NextRequest) {
     );
 
     // Use buildSwapIxWithAnchor which requires Anchor
-    // Import BN directly from bn.js (used by Anchor internally)
-    // Use anchor.BN if available, otherwise fall back to direct BN import
-    const BNClass = anchor.BN || BN;
-    
-    if (!BNClass) {
-      throw new Error("BN class is not available from Anchor or bn.js");
+    // IMPORTANT: Always use anchor.BN as Anchor's Program expects Anchor's BN wrapper
+    // Using raw bn.js BN can cause compatibility issues
+    if (!anchor.BN) {
+      throw new Error("anchor.BN is not available. Anchor may not be properly imported.");
     }
 
     // Debug: log BN class info
     if (process.env.NODE_ENV === "development") {
-      console.log("[build_solana_swap_instruction] BN class:", {
+      console.log("[build_solana_swap_instruction] BN class info:", {
         hasAnchorBN: !!anchor.BN,
-        hasDirectBN: !!BN,
-        usingClass: BNClass.name || "unknown",
+        anchorBNName: anchor.BN.name || "unknown",
+        anchorBNType: typeof anchor.BN,
+        isFunction: typeof anchor.BN === "function",
+        BNPrototype: anchor.BN.prototype ? Object.keys(anchor.BN.prototype).slice(0, 5) : "none",
       });
     }
 
     // Test BN creation with actual values we'll use
+    // This ensures the BN class works before passing to SDK
     let testBN;
     try {
-      testBN = new BNClass(params.amountIn.toString());
+      testBN = new anchor.BN(params.amountIn.toString());
+      // Validate the BN instance
+      if (!testBN || typeof testBN.toString !== "function") {
+        throw new Error("BN instance is invalid - missing toString method");
+      }
+      const testString = testBN.toString();
       if (process.env.NODE_ENV === "development") {
         console.log("[build_solana_swap_instruction] BN test successful:", {
           input: params.amountIn.toString(),
-          output: testBN.toString(),
+          output: testString,
+          bnType: typeof testBN,
+          bnConstructor: testBN.constructor?.name || "unknown",
         });
       }
     } catch (err: any) {
@@ -206,12 +213,13 @@ export async function POST(req: NextRequest) {
         stack: err.stack,
         amountIn: params.amountIn.toString(),
         amountInType: typeof params.amountIn,
+        BNClass: anchor.BN?.name || "unknown",
       });
       throw new Error(`BN initialization failed with value '${params.amountIn.toString()}': ${err.message}`);
     }
 
     const anchorExports = {
-      BN: BNClass,
+      BN: anchor.BN, // Always use anchor.BN, not raw bn.js
       Program: anchor.Program,
       AnchorProvider: {
         // Override local() to return our custom provider
