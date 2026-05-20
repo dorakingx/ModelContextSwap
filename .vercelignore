@@ -1,0 +1,10 @@
+node_modules
+mcp-server
+programs
+examples
+.git
+**/.next
+**/node_modules
+sdk/dist
+*.md
+!web/README.md
